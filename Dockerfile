@@ -10,7 +10,8 @@ RUN apk add --no-cache curl wget
 RUN mkdir -p /app /app/config /app/logs
 
 # Création de la configuration nginx
-RUN cat > /etc/nginx/nginx.conf << 'EOF'
+RUN rm -f /etc/nginx/conf.d/default.conf && \
+    cat > /etc/nginx/nginx.conf << 'EOF'
 events {
     worker_connections 1024;
 }
