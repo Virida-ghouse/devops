@@ -1,0 +1,93 @@
+# 🧪 VIRIDA Services - Test Local
+# Configuration simplifiée pour tester les services
+
+services:
+  # ========================================
+  # FRONTEND 3D VISUALIZER
+  # ========================================
+  frontend-3d:
+    image: virida/frontend-3d:latest
+    container_name: test-frontend-3d
+    environment:
+      - NODE_ENV=production
+      - REACT_APP_API_URL=http://localhost:8083/api
+      - REACT_APP_3D_ENGINE=threejs
+      - PORT=3000
+    restart: unless-stopped
+    ports:
+      - "3003:3000"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ========================================
+  # BACKEND API GATEWAY
+  # ========================================
+  backend-api:
+    image: virida/backend-api:latest
+    container_name: test-backend-api
+    environment:
+      - NODE_ENV=production
+      - PORT=8080
+      - DATABASE_URL=postgresql://virida:virida123@virida-postgres:5432/virida
+      - JWT_SECRET=test-jwt-secret-key
+      - CORS_ORIGIN=http://localhost:3003
+    restart: unless-stopped
+    ports:
+      - "8083:8080"
+    depends_on:
+      - postgres
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ========================================
+  # AI/ML PREDICTION ENGINE
+  # ========================================
+  ai-ml-prediction:
+    image: virida/ai-ml-prediction:latest
+    container_name: test-ai-ml-prediction
+    environment:
+      - PYTHON_ENV=production
+      - MODEL_PATH=/app/models
+      - DATABASE_URL=postgresql://virida:virida123@virida-postgres:5432/virida
+      - PORT=8000
+    restart: unless-stopped
+    ports:
+      - "8003:8000"
+    depends_on:
+      - postgres
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ========================================
+  # POSTGRESQL (pour les tests)
+  # ========================================
+  postgres:
+    image: postgres:15
+    container_name: test-postgres
+    environment:
+      - POSTGRES_DB=virida
+      - POSTGRES_USER=virida
+      - POSTGRES_PASSWORD=virida123
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    volumes:
+      - test_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U virida -d virida"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  test_postgres_data:
+    driver: local

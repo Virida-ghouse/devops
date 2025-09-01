@@ -1,0 +1,71 @@
+# 🐳 VIRIDA Docker Registry - Docker Compose
+# Registry Docker privé pour les images VIRIDA
+
+version: '3.8'
+
+services:
+  # Registry Docker officiel
+  registry:
+    image: registry:2
+    container_name: virida-registry
+    environment:
+      REGISTRY_STORAGE_DELETE_ENABLED: "true"
+      REGISTRY_STORAGE_CACHE_BLOBDESCRIPTOR: "inmemory"
+      REGISTRY_HTTP_ADDR: "0.0.0.0:5000"
+      REGISTRY_HTTP_HOST: "http://localhost:5000"
+    ports:
+      - "5000:5000"
+    volumes:
+      - registry_data:/var/lib/registry
+      - ./registry/config.yml:/etc/docker/registry/config.yml:ro
+    networks:
+      - virida-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/v2/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Interface web pour le registry
+  registry-ui:
+    image: joxit/docker-registry-ui:latest
+    container_name: virida-registry-ui
+    environment:
+      REGISTRY_URL: "http://registry:5000"
+      DELETE_IMAGES: "true"
+      REGISTRY_TITLE: "VIRIDA Docker Registry"
+    ports:
+      - "8080:80"
+    depends_on:
+      - registry
+    networks:
+      - virida-network
+    restart: unless-stopped
+
+  # Nginx reverse proxy avec authentification
+  nginx:
+    image: nginx:alpine
+    container_name: virida-registry-nginx
+    ports:
+      - "443:443"
+    volumes:
+      - ./registry/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./registry/ssl:/etc/nginx/ssl:ro
+      - ./registry/auth:/etc/nginx/auth:ro
+    depends_on:
+      - registry
+      - registry-ui
+    networks:
+      - virida-network
+    restart: unless-stopped
+
+volumes:
+  registry_data:
+    driver: local
+
+networks:
+  virida-network:
+    driver: bridge
+    name: virida-registry-network
+

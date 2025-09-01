@@ -1,0 +1,319 @@
+# 🚀 VIRIDA Development Environment - Docker Compose
+# Environnement de développement local avec hot-reload et volumes
+
+version: '3.8'
+
+services:
+  # ========================================
+  # FRONTEND SERVICES
+  # ========================================
+  
+  # 3D Visualizer - Service de visualisation 3D
+  frontend-3d-visualizer:
+    build:
+      context: ./frontend/3d-visualizer
+      dockerfile: ../../dockerfiles/frontend/3d-visualizer/Dockerfile
+      target: dev
+    container_name: virida-3d-visualizer-dev
+    environment:
+      - NODE_ENV=development
+      - PORT=3001
+      - NEXT_TELEMETRY_DISABLED=1
+      - API_URL=http://backend-api-gateway:3000
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./frontend/3d-visualizer:/app
+      - /app/node_modules
+      - /app/.next
+    networks:
+      - virida-dev-network
+    depends_on:
+      - backend-api-gateway
+    profiles:
+      - frontend
+      - dev
+
+  # Dashboard - Service de tableaux de bord
+  frontend-dashboard:
+    build:
+      context: ./frontend/dashboard
+      dockerfile: ../../dockerfiles/frontend/dashboard/Dockerfile
+      target: dev
+    container_name: virida-dashboard-dev
+    environment:
+      - NODE_ENV=development
+      - PORT=3002
+      - NEXT_TELEMETRY_DISABLED=1
+      - API_URL=http://backend-api-gateway:3000
+    ports:
+      - "3002:3000"
+    volumes:
+      - ./frontend/dashboard:/app
+      - /app/node_modules
+      - /app/.next
+    networks:
+      - virida-dev-network
+    depends_on:
+      - backend-api-gateway
+    profiles:
+      - frontend
+      - dev
+
+  # ========================================
+  # BACKEND SERVICES
+  # ========================================
+  
+  # API Gateway - Passerelle API centralisée
+  backend-api-gateway:
+    build:
+      context: ./backend/api-gateway
+      dockerfile: ../../dockerfiles/backend/api-gateway/Dockerfile
+      target: dev
+    container_name: virida-api-gateway-dev
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - HOST=0.0.0.0
+      - DATABASE_URL=postgresql://virida_user:virida_dev_password@postgres:5432/virida_dev
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=dev_jwt_secret_2024
+      - CORS_ORIGIN=http://localhost:3001,http://localhost:3002,http://localhost:3003
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./backend/api-gateway:/app
+      - /app/node_modules
+    networks:
+      - virida-dev-network
+    depends_on:
+      - postgres
+      - redis
+    profiles:
+      - backend
+      - dev
+
+  # User Service - Gestion des utilisateurs
+  backend-user-service:
+    build:
+      context: ./backend/user-service
+      dockerfile: ../../dockerfiles/backend/user-service/Dockerfile
+      target: dev
+    container_name: virida-user-service-dev
+    environment:
+      - NODE_ENV=development
+      - PORT=3004
+      - HOST=0.0.0.0
+      - DATABASE_URL=postgresql://virida_user:virida_dev_password@postgres:5432/virida_dev
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=dev_jwt_secret_2024
+    ports:
+      - "3004:3000"
+    volumes:
+      - ./backend/user-service:/app
+      - /app/node_modules
+    networks:
+      - virida-dev-network
+    depends_on:
+      - postgres
+      - redis
+    profiles:
+      - backend
+      - dev
+
+  # ========================================
+  # AI/ML SERVICES
+  # ========================================
+  
+  # Prediction Engine - Moteur de prédiction AI
+  ai-ml-prediction-engine:
+    build:
+      context: ./ai-ml/prediction-engine
+      dockerfile: ../../dockerfiles/ai-ml/prediction-engine/Dockerfile
+      target: dev
+    container_name: virida-prediction-engine-dev
+    environment:
+      - ENVIRONMENT=development
+      - PORT=8000
+      - HOST=0.0.0.0
+      - DATABASE_URL=postgresql://virida_user:virida_dev_password@postgres:5432/virida_dev
+      - REDIS_URL=redis://redis:6379
+      - MODEL_PATH=/app/models
+      - CUDA_VISIBLE_DEVICES=0
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./ai-ml/prediction-engine:/app
+      - /app/models
+      - /app/cache
+    networks:
+      - virida-dev-network
+    depends_on:
+      - postgres
+      - redis
+    profiles:
+      - ai-ml
+      - dev
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # ========================================
+  # INFRASTRUCTURE SERVICES
+  # ========================================
+  
+  # PostgreSQL - Base de données principale
+  postgres:
+    image: postgres:15-alpine
+    container_name: virida-postgres-dev
+    environment:
+      POSTGRES_DB: virida_dev
+      POSTGRES_USER: virida_user
+      POSTGRES_PASSWORD: virida_dev_password
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=C --lc-ctype=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+      - ./init-dev.sql:/docker-entrypoint-initdb.d/init-dev.sql:ro
+    networks:
+      - virida-dev-network
+    profiles:
+      - infrastructure
+      - dev
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U virida_user -d virida_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis - Cache et session store
+  redis:
+    image: redis:7-alpine
+    container_name: virida-redis-dev
+    command: redis-server --appendonly yes --requirepass virida_dev_redis_password
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_dev_data:/data
+    networks:
+      - virida-dev-network
+    profiles:
+      - infrastructure
+      - dev
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ========================================
+  # MONITORING SERVICES
+  # ========================================
+  
+  # Prometheus - Collecte de métriques
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: virida-prometheus-dev
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=24h'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus:/etc/prometheus:ro
+      - prometheus_dev_data:/prometheus
+    networks:
+      - virida-dev-network
+    profiles:
+      - monitoring
+      - dev
+
+  # Grafana - Dashboards et visualisation
+  grafana:
+    image: grafana/grafana:latest
+    container_name: virida-grafana-dev
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=true
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
+    ports:
+      - "3003:3000"
+    volumes:
+      - grafana_dev_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - virida-dev-network
+    depends_on:
+      - prometheus
+    profiles:
+      - monitoring
+      - dev
+
+  # ========================================
+  # DEVELOPMENT TOOLS
+  # ========================================
+  
+  # MailHog - Serveur SMTP de test
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: virida-mailhog-dev
+    ports:
+      - "1025:1025"  # SMTP
+      - "8025:8025"  # Interface web
+    networks:
+      - virida-dev-network
+    profiles:
+      - tools
+      - dev
+
+  # Selenium - Tests automatisés
+  selenium:
+    image: selenium/standalone-chrome:latest
+    container_name: virida-selenium-dev
+    ports:
+      - "4444:4444"
+      - "7900:7900"  # VNC pour debug
+    environment:
+      - SE_NODE_MAX_SESSIONS=4
+      - SE_NODE_OVERRIDE_MAX_SESSIONS=true
+    volumes:
+      - /dev/shm:/dev/shm
+    networks:
+      - virida-dev-network
+    profiles:
+      - tools
+      - dev
+
+# ========================================
+# VOLUMES
+# ========================================
+volumes:
+  postgres_dev_data:
+    driver: local
+  redis_dev_data:
+    driver: local
+  prometheus_dev_data:
+    driver: local
+  grafana_dev_data:
+    driver: local
+
+# ========================================
+# NETWORKS
+# ========================================
+networks:
+  virida-dev-network:
+    driver: bridge
+    name: virida-dev-network
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+

@@ -1,0 +1,100 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-api-gateway
+  labels:
+    app: backend-api-gateway
+    version: v1.0.0
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: backend-api-gateway
+  template:
+    metadata:
+      labels:
+        app: backend-api-gateway
+        version: v1.0.0
+    spec:
+      containers:
+        - name: api-gateway
+          image: virida/backend-api:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: PORT
+              value: "8080"
+            - name: DATABASE_URL
+              value: "postgresql://virida:virida123@postgres:5432/virida"
+            - name: REDIS_URL
+              value: "redis://redis:6379"
+            - name: JWT_SECRET
+              value: "virida-super-secret-key-2024"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "500m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          volumeMounts:
+            - name: api-config
+              mountPath: /app/config
+              readOnly: true
+      volumes:
+        - name: api-config
+          configMap:
+            name: backend-api-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-api-gateway
+  labels:
+    app: backend-api-gateway
+spec:
+  type: NodePort
+  ports:
+    - port: 8080
+      targetPort: 8080
+      nodePort: 30082
+      name: http
+  selector:
+    app: backend-api-gateway
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-api-config
+data:
+  config.json: |
+    {
+      "rateLimit": {
+        "windowMs": 900000,
+        "max": 100
+      },
+      "cors": {
+        "origin": ["http://localhost:3000", "http://frontend-3d-visualizer:3000"],
+        "credentials": true
+      },
+      "security": {
+        "helmet": true,
+        "rateLimit": true
+      }
+    }

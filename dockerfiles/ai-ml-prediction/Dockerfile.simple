@@ -1,0 +1,32 @@
+# 🚀 VIRIDA AI/ML Prediction Engine - Dockerfile Simple
+FROM nginx:alpine
+
+# Installation des outils de base
+RUN apk add --no-cache curl
+
+# Création des répertoires
+RUN mkdir -p /app /app/config /app/models /app/api
+
+# Copie de la configuration nginx
+COPY nginx.conf /etc/nginx/nginx.conf
+
+# Création des endpoints de santé et API
+RUN echo '{"status":"healthy","service":"ai-ml-prediction-engine","version":"1.0.0"}' > /app/health.json
+RUN echo '{"status":"ready","service":"ai-ml-prediction-engine","version":"1.0.0"}' > /app/ready.json
+RUN echo '{"status":"ok","service":"ai-ml-prediction-engine","version":"1.0.0"}' > /app/metrics.json
+
+# Création d'une API simple
+RUN echo '{"message":"VIRIDA AI/ML Engine","version":"1.0.0","models":["prediction","classification","nlp"],"status":"ready"}' > /app/api/info.json
+
+# Configuration des permissions
+RUN chown -R nginx:nginx /app
+
+# Exposition du port
+EXPOSE 8000
+
+# Script de démarrage
+COPY start.sh /start.sh
+RUN chmod +x /start.sh
+
+# Démarrage
+CMD ["/start.sh"]
