@@ -9,8 +9,8 @@ RUN apk add --no-cache curl wget
 # Création des répertoires
 RUN mkdir -p /app /app/config /app/logs
 
-# Copie de la configuration nginx pour le point d'entrée
-COPY <<EOF /etc/nginx/nginx.conf
+# Création de la configuration nginx
+RUN cat > /etc/nginx/nginx.conf << 'EOF'
 events {
     worker_connections 1024;
 }
@@ -69,7 +69,7 @@ http {
 EOF
 
 # Création de la page d'accueil VIRIDA
-COPY <<EOF /app/index.html
+RUN cat > /app/index.html << 'EOF'
 <!DOCTYPE html>
 <html lang="fr">
 <head>
