@@ -1,17 +1,17 @@
-# 🚀 VIRIDA Services - Dockerfile pour Clever Cloud
-# Point d'entrée principal pour le déploiement des services VIRIDA
-
+# 🚀 VIRIDA Services - Dockerfile Simple pour Clever Cloud
 FROM nginx:alpine
 
 # Installation des outils nécessaires
 RUN apk add --no-cache curl wget
 
 # Création des répertoires
-RUN mkdir -p /app /app/config /app/logs
+RUN mkdir -p /app
 
-# Création de la configuration nginx
-RUN rm -f /etc/nginx/conf.d/default.conf && \
-    cat > /etc/nginx/nginx.conf << 'EOF'
+# Suppression de la configuration par défaut
+RUN rm -rf /etc/nginx/conf.d/*
+
+# Création de la configuration nginx complète
+RUN cat > /etc/nginx/nginx.conf << 'EOF'
 events {
     worker_connections 1024;
 }
