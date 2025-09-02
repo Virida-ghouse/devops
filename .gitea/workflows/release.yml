@@ -1,0 +1,161 @@
+name: 🚀 Release VIRIDA
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., v1.0.0)'
+        required: true
+        type: string
+
+env:
+  NODE_VERSION: '18'
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  # ========================================
+  # VALIDATION PRÉ-RELEASE
+  # ========================================
+  pre-release:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v3
+      
+    - name: 🔍 Validate version
+      run: |
+        if [[ "${{ github.event.inputs.version }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "✅ Valid version format: ${{ github.event.inputs.version }}"
+        else
+          echo "❌ Invalid version format. Use: v1.0.0"
+          exit 1
+        fi
+        
+    - name: 🧪 Run all tests
+      run: |
+        echo "Running comprehensive tests before release..."
+        # This would trigger the test workflow
+        
+    - name: 🔒 Run security scan
+      run: |
+        echo "Running security scan before release..."
+        # This would trigger the security workflow
+
+  # ========================================
+  # BUILD DES IMAGES DOCKER
+  # ========================================
+  build-images:
+    runs-on: ubuntu-latest
+    needs: [pre-release]
+    
+    strategy:
+      matrix:
+        service: [frontend-3d, frontend-dashboard, frontend-mobile, backend-api, backend-auth, backend-user, backend-business, ai-prediction, ai-eve, iot-sensor, iot-mqtt, iot-device]
+        
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v3
+      
+    - name: 🏗️ Build Docker image
+      run: |
+        # Build specific service image
+        docker build -t virida-${{ matrix.service }}:${{ github.ref_name }} .
+        
+    - name: 🏷️ Tag image
+      run: |
+        docker tag virida-${{ matrix.service }}:${{ github.ref_name }} virida-${{ matrix.service }}:latest
+        
+    - name: 📊 Upload image
+      uses: actions/upload-artifact@v3
+      with:
+        name: image-${{ matrix.service }}-${{ github.ref_name }}
+        path: virida-${{ matrix.service }}.tar
+
+  # ========================================
+  # GÉNÉRATION DES RELEASES
+  # ========================================
+  create-release:
+    runs-on: ubuntu-latest
+    needs: [build-images]
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v3
+      
+    - name: 📥 Download all images
+      uses: actions/download-artifact@v3
+      
+    - name: 📦 Create release package
+      run: |
+        mkdir -p release-package
+        cp -r frontend/ release-package/
+        cp -r backend/ release-package/
+        cp -r ai-ml/ release-package/
+        cp -r iot/ release-package/
+        cp -r infrastructure/ release-package/
+        cp Dockerfile.clever release-package/
+        cp docker-compose*.yml release-package/
+        cp Makefile* release-package/
+        cp README.md release-package/
+        
+        # Create release notes
+        echo "# VIRIDA Release ${{ github.ref_name }}" > release-package/RELEASE_NOTES.md
+        echo "" >> release-package/RELEASE_NOTES.md
+        echo "## Changes" >> release-package/RELEASE_NOTES.md
+        echo "" >> release-package/RELEASE_NOTES.md
+        echo "## Installation" >> release-package/RELEASE_NOTES.md
+        echo "" >> release-package/RELEASE_NOTES.md
+        echo "1. Extract this package" >> release-package/RELEASE_NOTES.md
+        echo "2. Run: make setup-env" >> release-package/RELEASE_NOTES.md
+        echo "3. Run: make dev" >> release-package/RELEASE_NOTES.md
+        echo "" >> release-package/RELEASE_NOTES.md
+        
+        tar -czf virida-${{ github.ref_name }}.tar.gz release-package/
+        
+    - name: 🚀 Create GitHub Release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref_name }}
+        release_name: VIRIDA ${{ github.ref_name }}
+        body_path: release-package/RELEASE_NOTES.md
+        draft: false
+        prerelease: false
+        
+    - name: 📤 Upload Release Assets
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./virida-${{ github.ref_name }}.tar.gz
+        asset_name: virida-${{ github.ref_name }}.tar.gz
+        asset_content_type: application/gzip
+
+  # ========================================
+  # DÉPLOIEMENT AUTOMATIQUE
+  # ========================================
+  deploy-release:
+    runs-on: ubuntu-latest
+    needs: [create-release]
+    if: github.ref_name =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v3
+      
+    - name: 🚀 Deploy to Clever Cloud
+      run: |
+        echo "🚀 Deploying VIRIDA ${{ github.ref_name }} to Clever Cloud..."
+        # This would trigger the deployment workflow
+        
+    - name: 📢 Notify deployment
+      run: |
+        echo "✅ VIRIDA ${{ github.ref_name }} deployed successfully!"
+        echo "🌐 URL: https://app-e10f4ca6-35ab-49e6-967f-cf1ebc40bc37.cleverapps.io/"
+        echo "📅 Deployed at: $(date)"

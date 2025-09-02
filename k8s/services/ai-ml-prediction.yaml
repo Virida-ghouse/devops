@@ -1,0 +1,115 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-ml-prediction
+  namespace: virida
+  labels:
+    app: ai-ml-prediction
+    app.kubernetes.io/name: ai-ml-prediction
+    app.kubernetes.io/part-of: virida
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ai-ml-prediction
+  template:
+    metadata:
+      labels:
+        app: ai-ml-prediction
+    spec:
+      containers:
+      - name: ai-ml-prediction
+        image: virida-ai-prediction:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 8000
+        env:
+        - name: PYTHON_ENV
+          value: "production"
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: virida-secrets
+              key: database-url
+        - name: MODEL_PATH
+          value: "/app/models"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        volumeMounts:
+        - name: model-storage
+          mountPath: /app/models
+      volumes:
+      - name: model-storage
+        persistentVolumeClaim:
+          claimName: ai-ml-models-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-ml-prediction
+  namespace: virida
+  labels:
+    app: ai-ml-prediction
+spec:
+  selector:
+    app: ai-ml-prediction
+  ports:
+  - port: 8000
+    targetPort: 8000
+    protocol: TCP
+  type: ClusterIP
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ai-ml-models-pvc
+  namespace: virida
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ai-ml-prediction
+  namespace: virida
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - ai.virida.local
+    secretName: ai-tls
+  rules:
+  - host: ai.virida.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: ai-ml-prediction
+            port:
+              number: 8000

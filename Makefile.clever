@@ -1,0 +1,189 @@
+# 🚀 VIRIDA Makefile - Optimisé pour Clever Cloud
+# Commandes simplifiées pour le déploiement sur Clever Cloud
+
+.PHONY: help build deploy status logs clean
+
+# Variables
+CLEVER_APP_NAME=virida
+CLEVER_ORG_ID=orga_a7844a87-3356-462b-9e22-ce6c5437b0aa
+
+# Couleurs
+BLUE = \033[0;34m
+GREEN = \033[0;32m
+YELLOW = \033[1;33m
+RED = \033[0;31m
+NC = \033[0m # No Color
+
+# Aide
+help: ## Afficher l'aide
+	@echo "$(BLUE)🚀 VIRIDA - Commandes Clever Cloud$(NC)"
+	@echo ""
+	@echo "$(GREEN)Commandes Clever Cloud:$(NC)"
+	@echo "  build     - Construire l'image Docker optimisée"
+	@echo "  deploy    - Déployer sur Clever Cloud"
+	@echo "  status    - Voir le statut de l'application"
+	@echo "  logs      - Voir les logs de l'application"
+	@echo "  clean     - Nettoyer les ressources locales"
+	@echo ""
+	@echo "$(GREEN)Exemples:$(NC)"
+	@echo "  make build    - Construire l'image"
+	@echo "  make deploy   - Déployer sur Clever Cloud"
+	@echo "  make status   - Voir le statut"
+	@echo ""
+
+# ========================================
+# CONSTRUCTION ET DÉPLOIEMENT
+# ========================================
+build: ## Construire l'image Docker optimisée pour Clever Cloud
+	@echo "$(BLUE)🔨 Construction de l'image Docker optimisée...$(NC)"
+	@docker build -f Dockerfile.clever -t $(CLEVER_APP_NAME):latest .
+	@docker tag $(CLEVER_APP_NAME):latest $(CLEVER_APP_NAME):clever
+	@echo "$(GREEN)✅ Image construite avec succès$(NC)"
+
+deploy: ## Déployer sur Clever Cloud
+	@echo "$(BLUE)☁️  Déploiement sur Clever Cloud...$(NC)"
+	@clever deploy --app $(CLEVER_APP_NAME)
+	@echo "$(GREEN)✅ Déploiement terminé avec succès$(NC)"
+
+build-and-deploy: ## Construire et déployer en une commande
+	@echo "$(BLUE)🚀 Construction et déploiement sur Clever Cloud...$(NC)"
+	@make build
+	@make deploy
+	@echo "$(GREEN)✅ Construction et déploiement terminés$(NC)"
+
+# ========================================
+# MONITORING ET LOGS
+# ========================================
+status: ## Voir le statut de l'application Clever Cloud
+	@echo "$(BLUE)📊 Statut de l'application Clever Cloud...$(NC)"
+	@clever status --app $(CLEVER_APP_NAME)
+
+logs: ## Voir les logs de l'application Clever Cloud
+	@echo "$(BLUE)📋 Logs de l'application Clever Cloud...$(NC)"
+	@clever logs --app $(CLEVER_APP_NAME)
+
+logs-follow: ## Suivre les logs en temps réel
+	@echo "$(BLUE)📋 Suivi des logs en temps réel...$(NC)"
+	@clever logs --app $(CLEVER_APP_NAME) --follow
+
+# ========================================
+# GESTION DES VARIABLES D'ENVIRONNEMENT
+# ========================================
+env-list: ## Lister les variables d'environnement
+	@echo "$(BLUE)🔧 Variables d'environnement Clever Cloud...$(NC)"
+	@clever env --app $(CLEVER_APP_NAME)
+
+env-set: ## Définir une variable d'environnement (usage: make env-set KEY=value)
+	@echo "$(BLUE)🔧 Définition de la variable d'environnement...$(NC)"
+	@clever env set $(KEY) $(VALUE) --app $(CLEVER_APP_NAME)
+	@echo "$(GREEN)✅ Variable $(KEY) définie$(NC)"
+
+env-unset: ## Supprimer une variable d'environnement (usage: make env-unset KEY=key)
+	@echo "$(BLUE)🔧 Suppression de la variable d'environnement...$(NC)"
+	@clever env unset $(KEY) --app $(CLEVER_APP_NAME)
+	@echo "$(GREEN)✅ Variable $(KEY) supprimée$(NC)"
+
+# ========================================
+# GESTION DES DOMAINES
+# ========================================
+domain-list: ## Lister les domaines
+	@echo "$(BLUE)🌐 Domaines de l'application...$(NC)"
+	@clever domain --app $(CLEVER_APP_NAME)
+
+domain-add: ## Ajouter un domaine (usage: make domain-add DOMAIN=example.com)
+	@echo "$(BLUE)🌐 Ajout du domaine...$(NC)"
+	@clever domain add $(DOMAIN) --app $(CLEVER_APP_NAME)
+	@echo "$(GREEN)✅ Domaine $(DOMAIN) ajouté$(NC)"
+
+domain-remove: ## Supprimer un domaine (usage: make domain-remove DOMAIN=example.com)
+	@echo "$(BLUE)🌐 Suppression du domaine...$(NC)"
+	@clever domain remove $(DOMAIN) --app $(CLEVER_APP_NAME)
+	@echo "$(GREEN)✅ Domaine $(DOMAIN) supprimé$(NC)"
+
+# ========================================
+# GESTION DES ADDONS
+# ========================================
+addon-list: ## Lister les addons
+	@echo "$(BLUE)🔌 Addons de l'application...$(NC)"
+	@clever addon --app $(CLEVER_APP_NAME)
+
+addon-create: ## Créer un addon (usage: make addon-create ADDON=postgresql)
+	@echo "$(BLUE)🔌 Création de l'addon...$(NC)"
+	@clever addon create $(ADDON) --app $(CLEVER_APP_NAME)
+	@echo "$(GREEN)✅ Addon $(ADDON) créé$(NC)"
+
+# ========================================
+# MAINTENANCE
+# ========================================
+clean: ## Nettoyer les ressources locales
+	@echo "$(RED)🧹 Nettoyage des ressources locales...$(NC)"
+	@docker rmi $(CLEVER_APP_NAME):latest 2>/dev/null || true
+	@docker rmi $(CLEVER_APP_NAME):clever 2>/dev/null || true
+	@docker system prune -f
+	@echo "$(GREEN)✅ Ressources nettoyées$(NC)"
+
+restart: ## Redémarrer l'application Clever Cloud
+	@echo "$(BLUE)🔄 Redémarrage de l'application...$(NC)"
+	@clever restart --app $(CLEVER_APP_NAME)
+	@echo "$(GREEN)✅ Application redémarrée$(NC)"
+
+# ========================================
+# INFORMATIONS
+# ========================================
+info: ## Afficher les informations de l'application
+	@echo "$(BLUE)ℹ️  Informations de l'application VIRIDA$(NC)"
+	@echo ""
+	@echo "$(GREEN)Application:$(NC) $(CLEVER_APP_NAME)"
+	@echo "$(GREEN)Organisation:$(NC) $(CLEVER_ORG_ID)"
+	@echo "$(GREEN)Plateforme:$(NC) Clever Cloud"
+	@echo "$(GREEN)Version:$(NC) 1.0.0"
+	@echo ""
+	@echo "$(GREEN)Commandes utiles:$(NC)"
+	@echo "  make build-and-deploy  - Construction et déploiement"
+	@echo "  make status            - Statut de l'application"
+	@echo "  make logs              - Voir les logs"
+	@echo "  make env-list          - Variables d'environnement"
+
+# ========================================
+# DÉVELOPPEMENT RAPIDE
+# ========================================
+quick-deploy: ## Déploiement rapide (build + deploy + status)
+	@echo "$(BLUE)⚡ Déploiement rapide sur Clever Cloud...$(NC)"
+	@make build
+	@make deploy
+	@sleep 5
+	@make status
+	@echo "$(GREEN)✅ Déploiement rapide terminé$(NC)"
+
+# ========================================
+# SÉCURITÉ
+# ========================================
+security-scan: ## Scanner l'image Docker pour les vulnérabilités
+	@echo "$(BLUE)🔒 Scan de sécurité de l'image Docker...$(NC)"
+	@docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image $(CLEVER_APP_NAME):latest
+	@echo "$(GREEN)✅ Scan de sécurité terminé$(NC)"
+
+# ========================================
+# BACKUP ET RESTAURATION
+# ========================================
+backup-env: ## Sauvegarder les variables d'environnement
+	@echo "$(BLUE)💾 Sauvegarde des variables d'environnement...$(NC)"
+	@clever env --app $(CLEVER_APP_NAME) > backup-env-$(shell date +%Y%m%d_%H%M%S).txt
+	@echo "$(GREEN)✅ Variables d'environnement sauvegardées$(NC)"
+
+# ========================================
+# COMMANDES DE DÉVELOPPEMENT
+# ========================================
+dev-setup: ## Configuration initiale pour le développement
+	@echo "$(BLUE)⚙️  Configuration initiale...$(NC)"
+	@clever login
+	@clever link --app $(CLEVER_APP_NAME)
+	@echo "$(GREEN)✅ Configuration initiale terminée$(NC)"
+
+dev-test: ## Tester l'application localement
+	@echo "$(BLUE)🧪 Test de l'application locale...$(NC)"
+	@docker run --rm -p 8080:8080 $(CLEVER_APP_NAME):latest &
+	@sleep 5
+	@curl -f http://localhost:8080/health || exit 1
+	@docker stop $$(docker ps -q --filter ancestor=$(CLEVER_APP_NAME):latest)
+	@echo "$(GREEN)✅ Test local réussi$(NC)"

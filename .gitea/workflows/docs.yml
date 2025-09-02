@@ -1,0 +1,195 @@
+name: 📚 Generate Documentation
+
+on:
+  push:
+    branches: [ main, staging ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '18'
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  # ========================================
+  # GÉNÉRATION DOCUMENTATION FRONTEND
+  # ========================================
+  docs-frontend:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        service: [3d-visualizer, dashboard, mobile]
+        
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v3
+      
+    - name: 🔧 Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        cache-dependency-path: frontend/${{ matrix.service }}/package-lock.json
+        
+    - name: 📦 Install dependencies
+      run: |
+        cd frontend/${{ matrix.service }}
+        npm ci
+        
+    - name: 📚 Generate API documentation
+      run: |
+        cd frontend/${{ matrix.service }}
+        npm run docs || echo "No docs script found"
+        
+    - name: 📊 Upload documentation
+      uses: actions/upload-artifact@v3
+      with:
+        name: docs-frontend-${{ matrix.service }}
+        path: frontend/${{ matrix.service }}/docs/
+
+  # ========================================
+  # GÉNÉRATION DOCUMENTATION BACKEND
+  # ========================================
+  docs-backend:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        service: [api-gateway, auth-service, user-service, business-services]
+        
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v3
+      
+    - name: 🔧 Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        cache-dependency-path: backend/${{ matrix.service }}/package-lock.json
+        
+    - name: 📦 Install dependencies
+      run: |
+        cd backend/${{ matrix.service }}
+        npm ci
+        
+    - name: 📚 Generate API documentation
+      run: |
+        cd backend/${{ matrix.service }}
+        npm run docs || echo "No docs script found"
+        
+    - name: 📊 Upload documentation
+      uses: actions/upload-artifact@v3
+      with:
+        name: docs-backend-${{ matrix.service }}
+        path: backend/${{ matrix.service }}/docs/
+
+  # ========================================
+  # GÉNÉRATION DOCUMENTATION AI/ML
+  # ========================================
+  docs-ai-ml:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        service: [prediction-engine, eve-assistant]
+        
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v3
+      
+    - name: 🐍 Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+        
+    - name: 📦 Install dependencies
+      run: |
+        cd ai-ml/${{ matrix.service }}
+        pip install -r requirements.txt
+        pip install sphinx sphinx-rtd-theme
+        
+    - name: 📚 Generate documentation
+      run: |
+        cd ai-ml/${{ matrix.service }}
+        sphinx-build -b html docs/ docs/_build/html || echo "No Sphinx docs found"
+        
+    - name: 📊 Upload documentation
+      uses: actions/upload-artifact@v3
+      with:
+        name: docs-ai-ml-${{ matrix.service }}
+        path: ai-ml/${{ matrix.service }}/docs/_build/html/
+
+  # ========================================
+  # GÉNÉRATION DOCUMENTATION IOT
+  # ========================================
+  docs-iot:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        service: [sensor-collector, mqtt-broker, device-manager]
+        
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v3
+      
+    - name: 🐍 Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+        
+    - name: 📦 Install dependencies
+      run: |
+        cd iot/${{ matrix.service }}
+        pip install -r requirements.txt
+        pip install sphinx sphinx-rtd-theme
+        
+    - name: 📚 Generate documentation
+      run: |
+        cd iot/${{ matrix.service }}
+        sphinx-build -b html docs/ docs/_build/html || echo "No Sphinx docs found"
+        
+    - name: 📊 Upload documentation
+      uses: actions/upload-artifact@v3
+      with:
+        name: docs-iot-${{ matrix.service }}
+        path: iot/${{ matrix.service }}/docs/_build/html/
+
+  # ========================================
+  # PUBLICATION DOCUMENTATION
+  # ========================================
+  publish-docs:
+    runs-on: ubuntu-latest
+    needs: [docs-frontend, docs-backend, docs-ai-ml, docs-iot]
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v3
+      
+    - name: 📥 Download all documentation
+      uses: actions/download-artifact@v3
+      
+    - name: 📚 Create documentation site
+      run: |
+        mkdir -p docs-site
+        echo "# VIRIDA Documentation" > docs-site/README.md
+        echo "" >> docs-site/README.md
+        echo "## Services" >> docs-site/README.md
+        echo "" >> docs-site/README.md
+        
+        # Copy all documentation
+        find . -name "*.html" -path "*/docs/*" -exec cp {} docs-site/ \;
+        find . -name "*.md" -path "*/docs/*" -exec cp {} docs-site/ \;
+        
+    - name: 🚀 Deploy to GitHub Pages
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./docs-site
+        cname: docs.virida.com

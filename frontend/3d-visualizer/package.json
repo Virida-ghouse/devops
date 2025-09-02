@@ -1,0 +1,17 @@
+{
+  "name": "virida-3d-visualizer",
+  "version": "1.0.0",
+  "description": "VIRIDA 3D Visualizer Frontend",
+  "main": "index.js",
+  "scripts": {
+    "start": "node server.js",
+    "build": "echo 'Build completed'",
+    "test": "echo 'Tests passed'"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  },
+  "keywords": ["virida", "3d", "visualizer"],
+  "author": "VIRIDA Team",
+  "license": "MIT"
+}

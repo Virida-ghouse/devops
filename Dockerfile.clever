@@ -1,0 +1,29 @@
+# 🚀 VIRIDA - Dockerfile optimisé pour Clever Cloud
+# Point d'entrée principal pour le déploiement des services VIRIDA
+
+FROM nginx:alpine
+
+# Installation des outils nécessaires
+RUN apk add --no-cache curl wget
+
+# Création des répertoires
+RUN mkdir -p /app /app/config /app/logs
+
+# Création de la configuration nginx
+COPY nginx-standalone.conf /etc/nginx/nginx.conf
+
+# Création de la page d'accueil VIRIDA
+COPY index.html /usr/share/nginx/html/index.html
+
+# Configuration des permissions
+RUN chown -R nginx:nginx /app
+
+# Exposition du port (Clever Cloud utilise le port 8080)
+EXPOSE 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+# Démarrage de nginx
+CMD ["nginx", "-g", "daemon off;"]

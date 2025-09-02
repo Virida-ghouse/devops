@@ -7,6 +7,38 @@
       "git_ssh_url": "git+ssh://git@push-n3-par-clevercloud-customers.services.clever-cloud.com/app_e10f4ca6-35ab-49e6-967f-cf1ebc40bc37.git",
       "name": "virida-infrastructure",
       "alias": "virida-infrastructure"
+    },
+    {
+      "app_id": "app_d28b7a76-3c45-4970-911a-234cfb7c7858",
+      "org_id": "orga_a7844a87-3356-462b-9e22-ce6c5437b0aa",
+      "deploy_url": "https://push-n3-par-clevercloud-customers.services.clever-cloud.com/app_d28b7a76-3c45-4970-911a-234cfb7c7858.git",
+      "git_ssh_url": "git+ssh://git@push-n3-par-clevercloud-customers.services.clever-cloud.com/app_d28b7a76-3c45-4970-911a-234cfb7c7858.git",
+      "name": "virida-3d-visualizer",
+      "alias": "virida-3d-visualizer"
+    },
+    {
+      "app_id": "app_5e785e83-a1b6-463e-9775-65701538a272",
+      "org_id": "orga_a7844a87-3356-462b-9e22-ce6c5437b0aa",
+      "deploy_url": "https://push-n3-par-clevercloud-customers.services.clever-cloud.com/app_5e785e83-a1b6-463e-9775-65701538a272.git",
+      "git_ssh_url": "git+ssh://git@push-n3-par-clevercloud-customers.services.clever-cloud.com/app_5e785e83-a1b6-463e-9775-65701538a272.git",
+      "name": "virida-api-gateway",
+      "alias": "virida-api-gateway"
+    },
+    {
+      "app_id": "app_1f2ac067-0cd2-4e8d-b013-068ec8f4b775",
+      "org_id": "orga_a7844a87-3356-462b-9e22-ce6c5437b0aa",
+      "deploy_url": "https://push-n3-par-clevercloud-customers.services.clever-cloud.com/app_1f2ac067-0cd2-4e8d-b013-068ec8f4b775.git",
+      "git_ssh_url": "git+ssh://git@push-n3-par-clevercloud-customers.services.clever-cloud.com/app_1f2ac067-0cd2-4e8d-b013-068ec8f4b775.git",
+      "name": "virida-ai-prediction",
+      "alias": "virida-ai-prediction"
+    },
+    {
+      "app_id": "app_c5e421b3-8c77-456c-a547-188aec9aa3ae",
+      "org_id": "orga_a7844a87-3356-462b-9e22-ce6c5437b0aa",
+      "deploy_url": "https://push-n3-par-clevercloud-customers.services.clever-cloud.com/app_c5e421b3-8c77-456c-a547-188aec9aa3ae.git",
+      "git_ssh_url": "git+ssh://git@push-n3-par-clevercloud-customers.services.clever-cloud.com/app_c5e421b3-8c77-456c-a547-188aec9aa3ae.git",
+      "name": "gitea-virida-bridge",
+      "alias": "gitea-virida-bridge"
     }
   ]
 }

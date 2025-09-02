@@ -1,0 +1,26 @@
+global:
+  scrape_interval: 60s
+  evaluation_interval: 60s
+
+rule_files:
+  # - "production_rules.yml"
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'virida-production-services'
+    static_configs:
+      - targets: 
+        - 'frontend-3d:3000'
+        - 'frontend-dashboard:3000'
+        - 'backend-api-gateway:8080'
+        - 'backend-auth-service:8081'
+        - 'ai-prediction-engine:8000'
+        - 'ai-eve-assistant:8001'
+        - 'iot-sensor-collector:9000'
+        - 'postgres:5432'
+        - 'redis:6379'
+    metrics_path: '/metrics'
+    scrape_interval: 120s

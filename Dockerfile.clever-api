@@ -1,0 +1,15 @@
+# ⚡ VIRIDA API Gateway - Clever Cloud
+FROM crkdocker1/virida-api-gateway:v1.0.0
+
+# Métadonnées Clever Cloud
+LABEL clevercloud.region="par"
+LABEL clevercloud.app="virida-api-gateway"
+
+# Exposition du port (Clever Cloud utilise le port 8080)
+EXPOSE 8080
+
+# Health check pour Clever Cloud
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+# Le service démarre déjà sur le port 8080, parfait pour Clever Cloud

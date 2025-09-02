@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: n8n-external
+  namespace: virida
+  labels:
+    app: n8n-external
+spec:
+  type: ExternalName
+  externalName: n8n.cleverapps.io
+  ports:
+  - port: 443
+    protocol: TCP
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: n8n-external
+  namespace: virida
+subsets:
+- addresses:
+  - ip: 185.31.40.1  # IP de votre n8n sur Clever Cloud (à adapter)
+  ports:
+  - port: 443
+    protocol: TCP

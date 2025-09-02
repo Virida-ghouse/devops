@@ -1,0 +1,262 @@
+name: 🧪 Test VIRIDA
+
+on:
+  push:
+    branches: [ main, staging, develop ]
+  pull_request:
+    branches: [ main, staging ]
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '18'
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  # ========================================
+  # TESTS FRONTEND
+  # ========================================
+  test-frontend:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        service: [3d-visualizer, dashboard, mobile]
+        
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v3
+      
+    - name: 🔧 Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        cache-dependency-path: frontend/${{ matrix.service }}/package-lock.json
+        
+    - name: 📦 Install dependencies
+      run: |
+        cd frontend/${{ matrix.service }}
+        npm ci
+        
+    - name: 🧪 Run tests
+      run: |
+        cd frontend/${{ matrix.service }}
+        npm test -- --coverage
+        
+    - name: 🔍 Lint code
+      run: |
+        cd frontend/${{ matrix.service }}
+        npm run lint
+        
+    - name: 🏗️ Build test
+      run: |
+        cd frontend/${{ matrix.service }}
+        npm run build
+        
+    - name: 📊 Upload coverage
+      uses: codecov/codecov-action@v3
+      with:
+        file: frontend/${{ matrix.service }}/coverage/lcov.info
+        flags: frontend-${{ matrix.service }}
+
+  # ========================================
+  # TESTS BACKEND
+  # ========================================
+  test-backend:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        service: [api-gateway, auth-service, user-service, business-services]
+        
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v3
+      
+    - name: 🔧 Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        cache-dependency-path: backend/${{ matrix.service }}/package-lock.json
+        
+    - name: 📦 Install dependencies
+      run: |
+        cd backend/${{ matrix.service }}
+        npm ci
+        
+    - name: 🧪 Run tests
+      run: |
+        cd backend/${{ matrix.service }}
+        npm test -- --coverage
+        
+    - name: 🔍 Lint code
+      run: |
+        cd backend/${{ matrix.service }}
+        npm run lint
+        
+    - name: 🏗️ Build test
+      run: |
+        cd backend/${{ matrix.service }}
+        npm run build
+        
+    - name: 📊 Upload coverage
+      uses: codecov/codecov-action@v3
+      with:
+        file: backend/${{ matrix.service }}/coverage/lcov.info
+        flags: backend-${{ matrix.service }}
+
+  # ========================================
+  # TESTS AI/ML
+  # ========================================
+  test-ai-ml:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        service: [prediction-engine, eve-assistant]
+        
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v3
+      
+    - name: 🐍 Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+        
+    - name: 📦 Install dependencies
+      run: |
+        cd ai-ml/${{ matrix.service }}
+        pip install -r requirements.txt
+        pip install pytest pytest-cov flake8
+        
+    - name: 🧪 Run tests
+      run: |
+        cd ai-ml/${{ matrix.service }}
+        pytest --cov=. --cov-report=xml
+        
+    - name: 🔍 Lint code
+      run: |
+        cd ai-ml/${{ matrix.service }}
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        
+    - name: 📊 Upload coverage
+      uses: codecov/codecov-action@v3
+      with:
+        file: ai-ml/${{ matrix.service }}/coverage.xml
+        flags: ai-ml-${{ matrix.service }}
+
+  # ========================================
+  # TESTS IOT
+  # ========================================
+  test-iot:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        service: [sensor-collector, mqtt-broker, device-manager]
+        
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v3
+      
+    - name: 🐍 Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+        
+    - name: 📦 Install dependencies
+      run: |
+        cd iot/${{ matrix.service }}
+        pip install -r requirements.txt
+        pip install pytest pytest-cov flake8
+        
+    - name: 🧪 Run tests
+      run: |
+        cd iot/${{ matrix.service }}
+        pytest --cov=. --cov-report=xml
+        
+    - name: 🔍 Lint code
+      run: |
+        cd iot/${{ matrix.service }}
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        
+    - name: 📊 Upload coverage
+      uses: codecov/codecov-action@v3
+      with:
+        file: iot/${{ matrix.service }}/coverage.xml
+        flags: iot-${{ matrix.service }}
+
+  # ========================================
+  # TESTS DOCKER
+  # ========================================
+  test-docker:
+    runs-on: ubuntu-latest
+    needs: [test-frontend, test-backend, test-ai-ml, test-iot]
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v3
+      
+    - name: 🏗️ Build Docker image
+      run: |
+        docker build -f Dockerfile.clever -t virida-test .
+        
+    - name: ✅ Health check
+      run: |
+        docker run -d -p 8080:8080 --name virida-test virida-test
+        sleep 30
+        for i in {1..5}; do
+          if curl -f http://localhost:8080/health; then
+            echo "✅ Health check passed!"
+            break
+          fi
+          echo "⏳ Attempt $i/5 failed, retrying in 10s..."
+          sleep 10
+        done
+        docker stop virida-test
+        docker rm virida-test
+        
+    - name: 📊 Performance test
+      run: |
+        docker run -d -p 8080:8080 --name virida-perf virida-test
+        sleep 30
+        response_time=$(curl -o /dev/null -s -w '%{time_total}' http://localhost:8080/health)
+        echo "Response time: ${response_time}s"
+        if (( $(echo "$response_time > 2.0" | bc -l) )); then
+          echo "⚠️ Warning: Response time is high (${response_time}s)"
+        else
+          echo "✅ Performance test passed (${response_time}s)"
+        fi
+        docker stop virida-perf
+        docker rm virida-perf
+
+  # ========================================
+  # RAPPORT FINAL
+  # ========================================
+  test-summary:
+    runs-on: ubuntu-latest
+    needs: [test-frontend, test-backend, test-ai-ml, test-iot, test-docker]
+    if: always()
+    
+    steps:
+    - name: 📊 Test Summary
+      run: |
+        echo "🧪 VIRIDA Test Summary"
+        echo "======================"
+        echo "Frontend Tests: ${{ needs.test-frontend.result }}"
+        echo "Backend Tests: ${{ needs.test-backend.result }}"
+        echo "AI/ML Tests: ${{ needs.test-ai-ml.result }}"
+        echo "IoT Tests: ${{ needs.test-iot.result }}"
+        echo "Docker Tests: ${{ needs.test-docker.result }}"
+        echo ""
+        if [[ "${{ needs.test-frontend.result }}" == "success" && "${{ needs.test-backend.result }}" == "success" && "${{ needs.test-ai-ml.result }}" == "success" && "${{ needs.test-iot.result }}" == "success" && "${{ needs.test-docker.result }}" == "success" ]]; then
+          echo "✅ All tests passed!"
+          exit 0
+        else
+          echo "❌ Some tests failed!"
+          exit 1
+        fi
