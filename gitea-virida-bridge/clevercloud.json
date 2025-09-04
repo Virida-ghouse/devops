@@ -1,9 +1,0 @@
-{
-  "build": {
-    "type": "dockerfile",
-    "dockerfile_path": "Dockerfile.clever"
-  },
-  "deploy": {
-    "target": "docker"
-  }
-}

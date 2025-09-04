@@ -149,6 +149,29 @@ cache-stats: ## Affiche les statistiques du cache
 	./infrastructure/scripts/cache-stats.sh
 
 # ========================================
+# MACHINE LINUX
+# ========================================
+deploy-linux-server: ## Déploie la Machine Linux VIRIDA
+	@echo "🐧 Déploiement Machine Linux VIRIDA..."
+	./scripts/deploy-linux-server.sh
+
+install-docker-linux: ## Installe Docker sur Machine Linux
+	@echo "🐳 Installation Docker sur Machine Linux..."
+	./scripts/install-docker-linux.sh
+
+linux-status: ## Statut de la Machine Linux
+	@echo "📊 Statut Machine Linux..."
+	clever status --alias virida-linux-server
+
+linux-logs: ## Logs de la Machine Linux
+	@echo "📝 Logs Machine Linux..."
+	clever logs --alias virida-linux-server
+
+linux-ssh: ## SSH vers Machine Linux
+	@echo "🔐 Connexion SSH Machine Linux..."
+	clever ssh --alias virida-linux-server
+
+# ========================================
 # ENVIRONNEMENT DE DÉVELOPPEMENT
 # ========================================
 dev: ## Déployer l'environnement de développement

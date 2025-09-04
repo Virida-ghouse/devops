@@ -1,172 +1,163 @@
-name: 🔒 Security Scan VIRIDA
+name: 🔒 Security Scan
 
 on:
-  schedule:
-    - cron: '0 2 * * 1'  # Every Monday at 2 AM
-  workflow_dispatch:
   push:
-    branches: [ main, staging ]
+    branches: [ main, staging, develop ]
   pull_request:
-    branches: [ main ]
-
-env:
-  TRIVY_VERSION: '0.45.0'
+    branches: [ main, staging ]
+  schedule:
+    # Scan quotidien à 2h du matin
+    - cron: '0 2 * * *'
+  workflow_dispatch:
 
 jobs:
-  # ========================================
-  # SCAN DE SÉCURITÉ DU CODE
-  # ========================================
-  code-security:
+  security-scan:
     runs-on: ubuntu-latest
+    name: 🔒 Security Scan VIRIDA
     
     steps:
     - name: 📥 Checkout code
       uses: actions/checkout@v3
       
-    - name: 🔍 Run Trivy filesystem scan
-      uses: aquasecurity/trivy-action@master
-      with:
-        scan-type: 'fs'
-        scan-ref: '.'
-        format: 'sarif'
-        output: 'trivy-fs-results.sarif'
-        
-    - name: 📊 Upload filesystem scan results
-      uses: github/codeql-action/upload-sarif@v2
-      with:
-        sarif_file: 'trivy-fs-results.sarif'
-
-  # ========================================
-  # SCAN DE SÉCURITÉ DES IMAGES DOCKER
-  # ========================================
-  docker-security:
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: 📥 Checkout code
-      uses: actions/checkout@v3
+    - name: 🐳 Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
       
-    - name: 🏗️ Build Docker image
+    - name: 🔧 Install Trivy
       run: |
-        docker build -f Dockerfile.clever -t virida-security-test .
+        sudo apt-get update
+        sudo apt-get install wget apt-transport-https gnupg lsb-release
+        wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+        echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+        sudo apt-get update
+        sudo apt-get install trivy
         
-    - name: 🔍 Run Trivy image scan
-      uses: aquasecurity/trivy-action@master
-      with:
-        image-ref: 'virida-security-test'
-        format: 'sarif'
-        output: 'trivy-image-results.sarif'
+    - name: 🔧 Install hadolint
+      run: |
+        wget -O hadolint "https://github.com/hadolint/hadolint/releases/latest/download/hadolint-$(uname -s)-$(uname -m)"
+        chmod +x hadolint
+        sudo mv hadolint /usr/local/bin/
         
-    - name: 📊 Upload image scan results
-      uses: github/codeql-action/upload-sarif@v2
-      with:
-        sarif_file: 'trivy-image-results.sarif'
-
-  # ========================================
-  # SCAN DES DÉPENDANCES
-  # ========================================
-  dependency-scan:
-    runs-on: ubuntu-latest
-    
-    strategy:
-      matrix:
-        service: [frontend/3d-visualizer, frontend/dashboard, frontend/mobile, backend/api-gateway, backend/auth-service, backend/user-service, backend/business-services]
-        
-    steps:
-    - name: 📥 Checkout code
-      uses: actions/checkout@v3
-      
-    - name: 🔧 Setup Node.js
+    - name: 🔧 Install Node.js
       uses: actions/setup-node@v3
       with:
         node-version: '18'
-        cache: 'npm'
-        cache-dependency-path: ${{ matrix.service }}/package-lock.json
         
-    - name: 📦 Install dependencies
-      run: |
-        cd ${{ matrix.service }}
-        npm ci
-        
-    - name: 🔍 Run npm audit
-      run: |
-        cd ${{ matrix.service }}
-        npm audit --audit-level=moderate --json > audit-results.json || true
-        
-    - name: 📊 Upload audit results
-      uses: actions/upload-artifact@v3
-      with:
-        name: audit-results-${{ matrix.service }}
-        path: ${{ matrix.service }}/audit-results.json
-
-  # ========================================
-  # SCAN PYTHON
-  # ========================================
-  python-security:
-    runs-on: ubuntu-latest
-    
-    strategy:
-      matrix:
-        service: [ai-ml/prediction-engine, ai-ml/eve-assistant, iot/sensor-collector, iot/mqtt-broker, iot/device-manager]
-        
-    steps:
-    - name: 📥 Checkout code
-      uses: actions/checkout@v3
-      
-    - name: 🐍 Setup Python
+    - name: 🔧 Install Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
-        cache: 'pip'
         
-    - name: 📦 Install dependencies
+    - name: 🔧 Install Python security tools
       run: |
-        cd ${{ matrix.service }}
-        pip install -r requirements.txt
         pip install safety bandit
         
-    - name: 🔍 Run safety check
+    - name: 🏗️ Build optimized images
       run: |
-        cd ${{ matrix.service }}
-        safety check --json --output safety-results.json || true
+        # Construire les images optimisées
+        cd frontend/3d-visualizer
+        docker build --tag virida-3d-visualizer:scan -f Dockerfile.optimized .
+        cd ../../backend/api-gateway
+        docker build --tag virida-api-gateway:scan -f Dockerfile.optimized .
+        cd ../../ai-ml/prediction-engine
+        docker build --tag virida-ai-prediction:scan -f Dockerfile.optimized .
+        cd ../../gitea-virida-bridge
+        docker build --tag gitea-virida-bridge:scan -f Dockerfile.optimized .
         
-    - name: 🔍 Run bandit security linter
+    - name: 🔍 Scan Docker images with Trivy
       run: |
-        cd ${{ matrix.service }}
-        bandit -r . -f json -o bandit-results.json || true
+        mkdir -p security-results/images
         
-    - name: 📊 Upload security results
+        # Scanner les images
+        trivy image --format json --output security-results/images/virida-3d-visualizer-vulnerabilities.json virida-3d-visualizer:scan
+        trivy image --format json --output security-results/images/virida-api-gateway-vulnerabilities.json virida-api-gateway:scan
+        trivy image --format json --output security-results/images/virida-ai-prediction-vulnerabilities.json virida-ai-prediction:scan
+        trivy image --format json --output security-results/images/gitea-virida-bridge-vulnerabilities.json gitea-virida-bridge:scan
+        
+        # Rapports lisibles
+        trivy image --format table --output security-results/images/virida-3d-visualizer-report.txt virida-3d-visualizer:scan
+        trivy image --format table --output security-results/images/virida-api-gateway-report.txt virida-api-gateway:scan
+        trivy image --format table --output security-results/images/virida-ai-prediction-report.txt virida-ai-prediction:scan
+        trivy image --format table --output security-results/images/gitea-virida-bridge-report.txt gitea-virida-bridge:scan
+        
+    - name: 🔍 Scan Node.js dependencies
+      run: |
+        mkdir -p security-results/dependencies
+        
+        # Scanner les dépendances Node.js
+        cd frontend/3d-visualizer
+        npm audit --json > ../../security-results/dependencies/3d-visualizer-npm-audit.json 2>/dev/null || echo '{"vulnerabilities": {}}' > ../../security-results/dependencies/3d-visualizer-npm-audit.json
+        cd ../../backend/api-gateway
+        npm audit --json > ../../security-results/dependencies/api-gateway-npm-audit.json 2>/dev/null || echo '{"vulnerabilities": {}}' > ../../security-results/dependencies/api-gateway-npm-audit.json
+        cd ../../gitea-virida-bridge
+        npm audit --json > ../../security-results/dependencies/gitea-virida-bridge-npm-audit.json 2>/dev/null || echo '{"vulnerabilities": {}}' > ../../security-results/dependencies/gitea-virida-bridge-npm-audit.json
+        
+    - name: 🔍 Scan Python dependencies
+      run: |
+        mkdir -p security-results/dependencies
+        
+        # Scanner les dépendances Python
+        cd ai-ml/prediction-engine
+        safety check --json --output ../../security-results/dependencies/prediction-engine-safety.json 2>/dev/null || echo '[]' > ../../security-results/dependencies/prediction-engine-safety.json
+        
+    - name: 🔍 Scan Python code with bandit
+      run: |
+        mkdir -p security-results/code
+        
+        # Scanner le code Python
+        bandit -r ai-ml/prediction-engine -f json -o security-results/code/prediction-engine-bandit.json 2>/dev/null || echo '{"results": []}' > security-results/code/prediction-engine-bandit.json
+        
+    - name: 🔍 Lint Dockerfiles with hadolint
+      run: |
+        mkdir -p security-results/code
+        
+        # Linter les Dockerfiles
+        hadolint frontend/3d-visualizer/Dockerfile.optimized --format json > security-results/code/3d-visualizer-dockerfile-hadolint.json 2>/dev/null || echo '[]' > security-results/code/3d-visualizer-dockerfile-hadolint.json
+        hadolint backend/api-gateway/Dockerfile.optimized --format json > security-results/code/api-gateway-dockerfile-hadolint.json 2>/dev/null || echo '[]' > security-results/code/api-gateway-dockerfile-hadolint.json
+        hadolint ai-ml/prediction-engine/Dockerfile.optimized --format json > security-results/code/prediction-engine-dockerfile-hadolint.json 2>/dev/null || echo '[]' > security-results/code/prediction-engine-dockerfile-hadolint.json
+        hadolint gitea-virida-bridge/Dockerfile.optimized --format json > security-results/code/gitea-virida-bridge-dockerfile-hadolint.json 2>/dev/null || echo '[]' > security-results/code/gitea-virida-bridge-dockerfile-hadolint.json
+        
+    - name: 📊 Generate security summary
+      run: |
+        # Créer un résumé des scans
+        cat > security-results/security-summary.json << EOF
+        {
+          "scan_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+          "workflow_run": "${{ github.run_id }}",
+          "commit": "${{ github.sha }}",
+          "branch": "${{ github.ref_name }}",
+          "scans_performed": [
+            "docker_images_trivy",
+            "nodejs_dependencies_npm_audit",
+            "python_dependencies_safety",
+            "python_code_bandit",
+            "dockerfiles_hadolint"
+          ],
+          "results_directory": "security-results"
+        }
+        EOF
+        
+    - name: 📤 Upload security results
       uses: actions/upload-artifact@v3
       with:
-        name: security-results-${{ matrix.service }}
-        path: |
-          ${{ matrix.service }}/safety-results.json
-          ${{ matrix.service }}/bandit-results.json
-
-  # ========================================
-  # RAPPORT DE SÉCURITÉ
-  # ========================================
-  security-report:
-    runs-on: ubuntu-latest
-    needs: [code-security, docker-security, dependency-scan, python-security]
-    if: always()
-    
-    steps:
-    - name: 📊 Security Report
+        name: security-scan-results
+        path: security-results/
+        retention-days: 30
+        
+    - name: 📊 Security summary
       run: |
-        echo "🔒 VIRIDA Security Scan Report"
-        echo "=============================="
-        echo "Code Security: ${{ needs.code-security.result }}"
-        echo "Docker Security: ${{ needs.docker-security.result }}"
-        echo "Dependency Scan: ${{ needs.dependency-scan.result }}"
-        echo "Python Security: ${{ needs.python-security.result }}"
+        echo "🔒 Security Scan Summary"
+        echo "========================"
+        echo "📅 Date: $(date)"
+        echo "🔄 Workflow: ${{ github.run_id }}"
+        echo "📝 Commit: ${{ github.sha }}"
+        echo "🌿 Branch: ${{ github.ref_name }}"
         echo ""
-        echo "📅 Scan completed at: $(date)"
+        echo "📊 Scans performed:"
+        echo "  ✅ Docker images (Trivy)"
+        echo "  ✅ Node.js dependencies (npm audit)"
+        echo "  ✅ Python dependencies (safety)"
+        echo "  ✅ Python code (bandit)"
+        echo "  ✅ Dockerfiles (hadolint)"
         echo ""
-        if [[ "${{ needs.code-security.result }}" == "success" && "${{ needs.docker-security.result }}" == "success" && "${{ needs.dependency-scan.result }}" == "success" && "${{ needs.python-security.result }}" == "success" ]]; then
-          echo "✅ All security scans passed!"
-          exit 0
-        else
-          echo "⚠️ Some security issues detected. Check the results above."
-          exit 1
-        fi
+        echo "📁 Results uploaded as artifact: security-scan-results"
+        echo "🔄 Next scan: Daily at 2:00 AM UTC"

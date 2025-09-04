@@ -1,0 +1,95 @@
+name: Deploy VIRIDA Native Applications
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy-frontend-3d:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Deploy Frontend 3D
+        run: |
+          cd apps/frontend-3d
+          clever deploy --alias virida-frontend-3d
+        env:
+          CLEVER_TOKEN: ${{ secrets.CLEVER_TOKEN }}
+          CLEVER_SECRET: ${{ secrets.CLEVER_SECRET }}
+
+  deploy-backend-api:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Deploy Backend API
+        run: |
+          cd apps/backend-api
+          clever deploy --alias virida-backend-api
+        env:
+          CLEVER_TOKEN: ${{ secrets.CLEVER_TOKEN }}
+          CLEVER_SECRET: ${{ secrets.CLEVER_SECRET }}
+
+  deploy-ai-ml:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Deploy AI/ML
+        run: |
+          cd apps/ai-ml
+          clever deploy --alias virida-ai-ml
+        env:
+          CLEVER_TOKEN: ${{ secrets.CLEVER_TOKEN }}
+          CLEVER_SECRET: ${{ secrets.CLEVER_SECRET }}
+
+  deploy-monitoring:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Deploy Prometheus
+        run: |
+          cd apps/prometheus
+          clever deploy --alias virida-prometheus
+        env:
+          CLEVER_TOKEN: ${{ secrets.CLEVER_TOKEN }}
+          CLEVER_SECRET: ${{ secrets.CLEVER_SECRET }}
+      
+      - name: Deploy Grafana
+        run: |
+          cd apps/grafana
+          clever deploy --alias virida-grafana
+        env:
+          CLEVER_TOKEN: ${{ secrets.CLEVER_TOKEN }}
+          CLEVER_SECRET: ${{ secrets.CLEVER_SECRET }}
+
+  health-check:
+    runs-on: ubuntu-latest
+    needs: [deploy-frontend-3d, deploy-backend-api, deploy-ai-ml, deploy-monitoring]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Health Check Frontend
+        run: |
+          sleep 30
+          curl -f https://virida-frontend-3d.cleverapps.io/health || exit 1
+      
+      - name: Health Check Backend
+        run: |
+          curl -f https://virida-backend-api.cleverapps.io/health || exit 1
+      
+      - name: Health Check AI/ML
+        run: |
+          curl -f https://virida-ai-ml.cleverapps.io/health || exit 1
