@@ -1,0 +1,12 @@
+{
+  "apps": [
+    {
+      "app_id": "app_b386e974-33bd-40ea-b4c9-2d9050ce4b42",
+      "org_id": "orga_a7844a87-3356-462b-9e22-ce6c5437b0aa",
+      "deploy_url": "https://push-n3-par-clevercloud-customers.services.clever-cloud.com/app_b386e974-33bd-40ea-b4c9-2d9050ce4b42.git",
+      "git_ssh_url": "git+ssh://git@push-n3-par-clevercloud-customers.services.clever-cloud.com/app_b386e974-33bd-40ea-b4c9-2d9050ce4b42.git",
+      "name": "virida-frontend-3d",
+      "alias": "virida-frontend-3d"
+    }
+  ]
+}
