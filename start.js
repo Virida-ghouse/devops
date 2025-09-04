@@ -18,7 +18,10 @@ console.log('📁 Nouveau répertoire de travail:', process.cwd());
 // Démarrer l'application
 const child = spawn('node', ['server.js'], {
   stdio: 'inherit',
-  env: process.env
+  env: {
+    ...process.env,
+    PORT: process.env.PORT || '8080'
+  }
 });
 
 child.on('error', (err) => {
