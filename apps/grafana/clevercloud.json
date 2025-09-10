@@ -1,14 +1,12 @@
 {
   "build": {
-    "type": "linux",
-    "buildCommand": "./start.sh"
+    "type": "python",
+    "buildCommand": "pip install flask"
   },
   "deploy": {
-    "command": "./start.sh"
+    "command": "python simple-server.py"
   },
   "environment": {
-    "GF_SERVER_HTTP_PORT": "8080",
-    "GF_SECURITY_ADMIN_PASSWORD": "admin",
-    "GF_INSTALL_PLUGINS": "grafana-piechart-panel"
+    "PYTHON_VERSION": "3.13"
   }
 }
