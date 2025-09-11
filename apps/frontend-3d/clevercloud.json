@@ -7,7 +7,6 @@
     "command": "npm start"
   },
   "environment": {
-    "NODE_ENV": "production",
-    "PORT": "8080"
+    "NODE_ENV": "production"
   }
 }
