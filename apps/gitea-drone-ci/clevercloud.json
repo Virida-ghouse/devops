@@ -18,6 +18,16 @@
     "GITEA_DOMAIN": "gitea-drone-ci.cleverapps.io",
     "DRONE_HOST": "gitea-drone-ci.cleverapps.io",
     "GITEA_CLIENT_ID": "gitea-oauth-client-id",
-    "GITEA_CLIENT_SECRET": "gitea-oauth-client-secret"
+    "GITEA_CLIENT_SECRET": "gitea-oauth-client-secret",
+    "GITEA_DB_TYPE": "postgres",
+    "GITEA_DB_HOST": "",
+    "GITEA_DB_NAME": "gitea",
+    "GITEA_DB_USER": "",
+    "GITEA_DB_PASS": "",
+    "DRONE_DB_TYPE": "postgres",
+    "DRONE_DB_HOST": "",
+    "DRONE_DB_NAME": "drone",
+    "DRONE_DB_USER": "",
+    "DRONE_DB_PASS": ""
   }
 }

@@ -77,6 +77,35 @@ func (gdm *GiteaDroneManager) ConfigureGitea() error {
 	log.Println("Configuring Gitea...")
 	
 	configPath := filepath.Join(gdm.DataDir, "gitea", "config", "app.ini")
+	// Configuration de la base de données
+	dbType := getEnv("GITEA_DB_TYPE", "sqlite3")
+	dbHost := getEnv("GITEA_DB_HOST", "")
+	dbName := getEnv("GITEA_DB_NAME", "gitea")
+	dbUser := getEnv("GITEA_DB_USER", "gitea")
+	dbPass := getEnv("GITEA_DB_PASS", "")
+	
+	var dbConfig string
+	if dbType == "postgres" || dbType == "mysql" {
+		dbConfig = fmt.Sprintf(`[database]
+DB_TYPE = %s
+HOST = %s
+NAME = %s
+USER = %s
+PASSWD = %s
+SSL_MODE = disable
+CHARSET = utf8`, dbType, dbHost, dbName, dbUser, dbPass)
+	} else {
+		dbConfig = fmt.Sprintf(`[database]
+DB_TYPE = sqlite3
+HOST = %s/gitea.db
+NAME = gitea
+USER = gitea
+PASSWD = 
+SSL_MODE = disable
+CHARSET = utf8
+PATH = %s/gitea.db`, gdm.DataDir, gdm.DataDir)
+	}
+
 	config := fmt.Sprintf(`[server]
 APP_NAME = VIRIDA Gitea
 RUN_USER = git
@@ -93,15 +122,7 @@ LFS_CONTENT_PATH = %s/lfs
 LFS_JWT_SECRET = %s
 OFFLINE_MODE = false
 
-[database]
-DB_TYPE = sqlite3
-HOST = %s/gitea.db
-NAME = gitea
-USER = gitea
-PASSWD = 
-SSL_MODE = disable
-CHARSET = utf8
-PATH = %s/gitea.db
+%s
 
 [repository]
 ROOT = %s/repositories
@@ -251,6 +272,21 @@ func (gdm *GiteaDroneManager) InstallDrone() error {
 func (gdm *GiteaDroneManager) StartDrone() error {
 	log.Println("Starting Drone CI...")
 	
+	// Configuration de la base de données Drone
+	droneDbType := getEnv("DRONE_DB_TYPE", "sqlite3")
+	droneDbHost := getEnv("DRONE_DB_HOST", "")
+	droneDbName := getEnv("DRONE_DB_NAME", "drone")
+	droneDbUser := getEnv("DRONE_DB_USER", "drone")
+	droneDbPass := getEnv("DRONE_DB_PASS", "")
+	
+	var droneDbConfig string
+	if droneDbType == "postgres" || droneDbType == "mysql" {
+		droneDbConfig = fmt.Sprintf("%s://%s:%s@%s/%s?sslmode=disable", 
+			droneDbType, droneDbUser, droneDbPass, droneDbHost, droneDbName)
+	} else {
+		droneDbConfig = filepath.Join(gdm.DataDir, "drone", "drone.db")
+	}
+
 	// Start Drone server
 	cmd := exec.Command(filepath.Join(gdm.DataDir, "drone", "drone-server"), "server",
 		"--drone-gitea-server", fmt.Sprintf("http://localhost:%s", gdm.GiteaPort),
@@ -260,8 +296,8 @@ func (gdm *GiteaDroneManager) StartDrone() error {
 		"--drone-server-host", getEnv("DRONE_HOST", "localhost"),
 		"--drone-server-proto", "http",
 		"--drone-server-addr", fmt.Sprintf(":%s", gdm.DronePort),
-		"--drone-database-driver", "sqlite3",
-		"--drone-database-datasource", filepath.Join(gdm.DataDir, "drone", "drone.db"),
+		"--drone-database-driver", droneDbType,
+		"--drone-database-datasource", droneDbConfig,
 	)
 	
 	if err := cmd.Start(); err != nil {
