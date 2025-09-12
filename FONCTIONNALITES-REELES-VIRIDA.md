@@ -211,3 +211,5 @@
 - ✅ **Déploiement simplifié** (Git push → déploiement)
 
 **Les fonctionnalités obsolètes ont été identifiées et remplacées par des solutions plus adaptées à Clever Cloud.**
+
+

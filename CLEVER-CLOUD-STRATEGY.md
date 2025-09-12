@@ -143,3 +143,5 @@ clever delete --alias virida-integration-gitea-bridge
 - Logs centralisés
 - Recherche et filtrage
 - Intégration avec monitoring
+
+

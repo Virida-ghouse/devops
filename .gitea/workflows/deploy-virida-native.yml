@@ -93,3 +93,5 @@ jobs:
       - name: Health Check AI/ML
         run: |
           curl -f https://virida-ai-ml.cleverapps.io/health || exit 1
+
+

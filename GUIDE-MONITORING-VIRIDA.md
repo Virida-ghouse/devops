@@ -247,3 +247,5 @@ clever logs --app virida-grafana
 ---
 
 **🎉 Monitoring VIRIDA configuré et opérationnel !**
+
+

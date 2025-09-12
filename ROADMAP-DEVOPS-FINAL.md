@@ -242,3 +242,5 @@ clever secret set DATABASE_PASSWORD "secure_password" --app virida-backend-api
 - ✅ **Coûts** maîtrisés et optimisés
 
 **Résultat** : Plateforme IoT/IA robuste, sécurisée et évolutive pour la surveillance environnementale.
+
+

@@ -195,3 +195,5 @@ gunzip -c virida-3d-visualizer.tar.gz | docker load
 ---
 
 **🎉 Container Registry Gitea configuré pour VIRIDA !**
+
+
