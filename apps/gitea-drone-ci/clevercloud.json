@@ -1,0 +1,23 @@
+{
+  "build": {
+    "type": "go",
+    "commands": [
+      "go mod tidy",
+      "go build -o gitea-drone-ci main.go"
+    ]
+  },
+  "deploy": {
+    "target": "gitea-drone-ci",
+    "command": "./gitea-drone-ci"
+  },
+  "environment": {
+    "GITEA_PORT": "3000",
+    "DRONE_PORT": "3001",
+    "DATA_DIR": "/tmp/gitea-drone",
+    "DRONE_SECRET": "virida-super-secret-key-2024",
+    "GITEA_DOMAIN": "gitea-drone-ci.cleverapps.io",
+    "DRONE_HOST": "gitea-drone-ci.cleverapps.io",
+    "GITEA_CLIENT_ID": "gitea-oauth-client-id",
+    "GITEA_CLIENT_SECRET": "gitea-oauth-client-secret"
+  }
+}
