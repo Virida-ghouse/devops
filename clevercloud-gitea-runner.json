@@ -1,0 +1,31 @@
+{
+  "build": {
+    "type": "docker",
+    "dockerfile": "Dockerfile.gitea-runner"
+  },
+  "deploy": {
+    "target": "gitea-runner",
+    "command": "/usr/local/bin/start-gitea-runner.sh"
+  },
+  "environment": {
+    "GITEA_INSTANCE_URL": "https://gitea.com",
+    "GITEA_TOKEN": "",
+    "RUNNER_NAME": "virida-runner",
+    "RUNNER_LABELS": "ubuntu-latest:docker://node:18,ubuntu-20.04:docker://node:18,ubuntu-22.04:docker://node:22",
+    "RUNNER_WORK_DIR": "/workspace",
+    "DOCKER_BUILDKIT": "1",
+    "COMPOSE_DOCKER_CLI_BUILD": "1"
+  },
+  "scaling": {
+    "min_instances": 1,
+    "max_instances": 3
+  },
+  "health_check": {
+    "path": "/health",
+    "port": 8080
+  },
+  "restart": {
+    "policy": "always",
+    "delay": "30s"
+  }
+}

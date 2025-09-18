@@ -1,0 +1,53 @@
+# 🐙 Gitea Dockerfile pour VIRIDA
+FROM gitea/gitea:1.21
+
+# Métadonnées
+LABEL maintainer="VIRIDA Team"
+LABEL description="Gitea pour VIRIDA avec base de données PostgreSQL"
+
+# Variables d'environnement par défaut
+ENV USER_UID=1000
+ENV USER_GID=1000
+ENV GITEA__database__DB_TYPE=postgres
+ENV GITEA__server__DOMAIN=gitea.cleverapps.io
+ENV GITEA__server__ROOT_URL=https://gitea.cleverapps.io
+ENV GITEA__server__SSH_DOMAIN=gitea.cleverapps.io
+ENV GITEA__server__SSH_PORT=22
+ENV GITEA__server__HTTP_PORT=3000
+ENV GITEA__server__PROTOCOL=https
+ENV GITEA__security__INSTALL_LOCK=true
+ENV GITEA__service__DISABLE_REGISTRATION=false
+ENV GITEA__service__REQUIRE_SIGNIN_VIEW=false
+ENV GITEA__log__LEVEL=Info
+ENV GITEA__log__ROOT_PATH=/data/gitea/log
+ENV GITEA__repository__ROOT=/data/git/repositories
+ENV GITEA__repository__LOCAL_LOCAL_COPY_PATH=/data/gitea/tmp/local-repo
+ENV GITEA__repository__LOCAL_WIKI_PATH=/data/gitea/tmp/local-wiki
+ENV GITEA__repository__UPLOAD_PATH=/data/gitea/tmp/uploads
+ENV GITEA__server__LFS_START_SERVER=true
+ENV GITEA__server__LFS_CONTENT_PATH=/data/git/lfs
+ENV GITEA__cron__ENABLED=true
+ENV GITEA__cron__RUN_AT_START=true
+ENV GITEA__actions__ENABLED=true
+ENV GITEA__actions__DEFAULT_ACTIONS_URL=https://gitea.com
+ENV GITEA__actions__ENABLE_ACTIONS=true
+
+# Création des répertoires
+RUN mkdir -p /data/gitea/log \
+    && mkdir -p /data/git/repositories \
+    && mkdir -p /data/gitea/tmp/local-repo \
+    && mkdir -p /data/gitea/tmp/local-wiki \
+    && mkdir -p /data/gitea/tmp/uploads \
+    && mkdir -p /data/git/lfs
+
+# Permissions
+RUN chown -R git:git /data
+
+# Ports
+EXPOSE 3000 22
+
+# Volume
+VOLUME ["/data"]
+
+# Point d'entrée
+ENTRYPOINT ["/usr/bin/entrypoint"]

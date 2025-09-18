@@ -1,8 +1,0 @@
-{
-  "name": "virida-frontend-3d",
-  "version": "1.0.0",
-  "main": "apps/frontend-3d/server.js",
-  "scripts": {
-    "start": "cd apps/frontend-3d && node server.js"
-  }
-}

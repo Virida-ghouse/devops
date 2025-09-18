@@ -1,0 +1,315 @@
+name: 🚀 VIRIDA CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, staging, develop ]
+  pull_request:
+    branches: [ main, staging ]
+
+env:
+  NODE_VERSION: '18'
+  PYTHON_VERSION: '3.11'
+  GO_VERSION: '1.22'
+  DOCKER_BUILDKIT: 1
+
+jobs:
+  # ========================================
+  # ÉTAPE 1: TESTS ET VALIDATION
+  # ========================================
+  test:
+    name: 🧪 Tests & Validation
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app: [frontend-3d, ai-ml]
+    
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🔧 Setup Node.js
+        if: matrix.app == 'frontend-3d'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: apps/frontend-3d/package-lock.json
+
+      - name: 🔧 Setup Python
+        if: matrix.app == 'ai-ml'
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: apps/ai-ml/requirements.txt
+
+      - name: 📦 Install Dependencies
+        run: |
+          if [ "${{ matrix.app }}" = "frontend-3d" ]; then
+            cd apps/frontend-3d
+            npm ci
+          elif [ "${{ matrix.app }}" = "ai-ml" ]; then
+            cd apps/ai-ml
+            pip install -r requirements.txt
+          fi
+
+      - name: 🧪 Run Tests
+        run: |
+          if [ "${{ matrix.app }}" = "frontend-3d" ]; then
+            cd apps/frontend-3d
+            npm run test
+            npm run lint
+          elif [ "${{ matrix.app }}" = "ai-ml" ]; then
+            cd apps/ai-ml
+            python -m pytest tests/ -v
+            python -m pylint app/
+          fi
+
+      - name: 🔒 Security Scan
+        uses: securecodewarrior/docker-security-scan@v1
+        with:
+          path: apps/${{ matrix.app }}
+
+  # ========================================
+  # ÉTAPE 2: BUILD ET PACKAGE
+  # ========================================
+  build:
+    name: 🏗️ Build & Package
+    runs-on: ubuntu-latest
+    needs: test
+    strategy:
+      matrix:
+        app: [frontend-3d, ai-ml]
+    
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup Node.js
+        if: matrix.app == 'frontend-3d'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: apps/frontend-3d/package-lock.json
+
+      - name: 🔧 Setup Python
+        if: matrix.app == 'ai-ml'
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: 📦 Install Dependencies
+        run: |
+          if [ "${{ matrix.app }}" = "frontend-3d" ]; then
+            cd apps/frontend-3d
+            npm ci
+          elif [ "${{ matrix.app }}" = "ai-ml" ]; then
+            cd apps/ai-ml
+            pip install -r requirements.txt
+          fi
+
+      - name: 🏗️ Build Application
+        run: |
+          if [ "${{ matrix.app }}" = "frontend-3d" ]; then
+            cd apps/frontend-3d
+            npm run build
+          elif [ "${{ matrix.app }}" = "ai-ml" ]; then
+            cd apps/ai-ml
+            echo "Python app ready for deployment"
+          fi
+
+      - name: 📦 Package Application
+        run: |
+          cd apps/${{ matrix.app }}
+          tar -czf ../${{ matrix.app }}-${{ github.sha }}.tar.gz .
+          echo "Package created: ${{ matrix.app }}-${{ github.sha }}.tar.gz"
+
+      - name: 📤 Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.app }}-build
+          path: apps/${{ matrix.app }}-${{ github.sha }}.tar.gz
+          retention-days: 7
+
+  # ========================================
+  # ÉTAPE 3: DÉPLOIEMENT STAGING
+  # ========================================
+  deploy-staging:
+    name: 🚀 Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/staging'
+    environment: staging
+    
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 📥 Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: *-build
+          merge-multiple: true
+
+      - name: 🔧 Setup Clever Cloud CLI
+        run: |
+          npm install -g clever-tools
+
+      - name: 🔐 Login to Clever Cloud
+        run: |
+          clever login --token ${{ secrets.CLEVER_CLOUD_TOKEN }} --secret ${{ secrets.CLEVER_CLOUD_SECRET }}
+
+      - name: 🚀 Deploy Frontend 3D
+        run: |
+          cd apps/frontend-3d
+          clever deploy --alias virida-frontend-3d-staging --same-commit-policy rebuild
+
+      - name: 🚀 Deploy AI/ML
+        run: |
+          cd apps/ai-ml
+          clever deploy --alias virida-ai-ml-staging --same-commit-policy rebuild
+
+      - name: 🧪 Health Check Staging
+        run: |
+          sleep 60
+          curl -f https://virida-frontend-3d-staging.cleverapps.io/health || exit 1
+          curl -f https://virida-ai-ml-staging.cleverapps.io/health || exit 1
+          echo "✅ Staging deployment successful!"
+
+      - name: 📢 Notify Success
+        uses: 8398a7/action-slack@v3
+        with:
+          status: success
+          channel: '#ci-cd-notifications'
+          text: |
+            ✅ **STAGING DEPLOYMENT SUCCESS**
+            Repository: ${{ github.repository }}
+            Branch: ${{ github.ref_name }}
+            Commit: ${{ github.sha }}
+            Author: ${{ github.actor }}
+            
+            **Deployed Services:**
+            - Frontend 3D: https://virida-frontend-3d-staging.cleverapps.io
+            - AI/ML: https://virida-ai-ml-staging.cleverapps.io
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # ========================================
+  # ÉTAPE 4: DÉPLOIEMENT PRODUCTION
+  # ========================================
+  deploy-production:
+    name: 🚀 Deploy to Production
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 📥 Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: *-build
+          merge-multiple: true
+
+      - name: 🔧 Setup Clever Cloud CLI
+        run: |
+          npm install -g clever-tools
+
+      - name: 🔐 Login to Clever Cloud
+        run: |
+          clever login --token ${{ secrets.CLEVER_CLOUD_TOKEN }} --secret ${{ secrets.CLEVER_CLOUD_SECRET }}
+
+      - name: 🚀 Deploy Frontend 3D
+        run: |
+          cd apps/frontend-3d
+          clever deploy --alias virida-frontend-3d --same-commit-policy rebuild
+
+      - name: 🚀 Deploy AI/ML
+        run: |
+          cd apps/ai-ml
+          clever deploy --alias virida-ai-ml --same-commit-policy rebuild
+
+      - name: 🧪 Health Check Production
+        run: |
+          sleep 90
+          curl -f https://virida-frontend-3d.cleverapps.io/health || exit 1
+          curl -f https://virida-ai-ml.cleverapps.io/health || exit 1
+          echo "✅ Production deployment successful!"
+
+      - name: 📊 Performance Test
+        run: |
+          response_time=$(curl -o /dev/null -s -w '%{time_total}' https://virida-frontend-3d.cleverapps.io/)
+          echo "Frontend response time: ${response_time}s"
+          if [ $(echo "$response_time > 3.0" | bc -l) -eq 1 ]; then
+            echo "⚠️ Warning: High response time"
+          fi
+
+      - name: 📢 Notify Success
+        uses: 8398a7/action-slack@v3
+        with:
+          status: success
+          channel: '#ci-cd-notifications'
+          text: |
+            🎉 **PRODUCTION DEPLOYMENT SUCCESS**
+            Repository: ${{ github.repository }}
+            Branch: ${{ github.ref_name }}
+            Commit: ${{ github.sha }}
+            Author: ${{ github.actor }}
+            
+            **Deployed Services:**
+            - Frontend 3D: https://virida-frontend-3d.cleverapps.io
+            - AI/ML: https://virida-ai-ml.cleverapps.io
+            
+            **Performance:**
+            - Response time: ${response_time}s
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # ========================================
+  # ÉTAPE 5: ROLLBACK AUTOMATIQUE
+  # ========================================
+  rollback:
+    name: 🔄 Auto Rollback
+    runs-on: ubuntu-latest
+    needs: [deploy-staging, deploy-production]
+    if: failure()
+    
+    steps:
+      - name: 🔧 Setup Clever Cloud CLI
+        run: |
+          npm install -g clever-tools
+
+      - name: 🔐 Login to Clever Cloud
+        run: |
+          clever login --token ${{ secrets.CLEVER_CLOUD_TOKEN }} --secret ${{ secrets.CLEVER_CLOUD_SECRET }}
+
+      - name: 🔄 Rollback Applications
+        run: |
+          if [ "${{ github.ref_name }}" = "staging" ]; then
+            clever restart --alias virida-frontend-3d-staging
+            clever restart --alias virida-ai-ml-staging
+          elif [ "${{ github.ref_name }}" = "main" ]; then
+            clever restart --alias virida-frontend-3d
+            clever restart --alias virida-ai-ml
+          fi
+
+      - name: 📢 Notify Rollback
+        uses: 8398a7/action-slack@v3
+        with:
+          status: failure
+          channel: '#ci-cd-notifications'
+          text: |
+            🔄 **AUTO ROLLBACK TRIGGERED**
+            Repository: ${{ github.repository }}
+            Branch: ${{ github.ref_name }}
+            Commit: ${{ github.sha }}
+            
+            Applications have been restarted to previous stable version.
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

@@ -1,4 +1,4 @@
-name: 🚀 Release VIRIDA
+name: 🚀 Release Management
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (e.g., v1.0.0)'
+        description: 'Release version (e.g., v1.0.0)'
         required: true
         type: string
 
@@ -17,145 +17,261 @@ env:
 
 jobs:
   # ========================================
-  # VALIDATION PRÉ-RELEASE
+  # PRÉPARATION DE LA RELEASE
   # ========================================
-  pre-release:
+  prepare-release:
+    name: 📋 Prepare Release
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      changelog: ${{ steps.changelog.outputs.changelog }}
     
     steps:
-    - name: 📥 Checkout code
-      uses: actions/checkout@v3
-      
-    - name: 🔍 Validate version
-      run: |
-        if [[ "${{ github.event.inputs.version }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-          echo "✅ Valid version format: ${{ github.event.inputs.version }}"
-        else
-          echo "❌ Invalid version format. Use: v1.0.0"
-          exit 1
-        fi
-        
-    - name: 🧪 Run all tests
-      run: |
-        echo "Running comprehensive tests before release..."
-        # This would trigger the test workflow
-        
-    - name: 🔒 Run security scan
-      run: |
-        echo "Running security scan before release..."
-        # This would trigger the security workflow
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🏷️ Extract Version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 📝 Generate Changelog
+        id: changelog
+        run: |
+          echo "## 🚀 Release ${{ steps.version.outputs.version }}" > CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          echo "### 📅 Date: $(date)" >> CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          echo "### 🔄 Changes:" >> CHANGELOG.md
+          git log --oneline --since="1 month ago" >> CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          echo "### 🧪 Tested Applications:" >> CHANGELOG.md
+          echo "- Frontend 3D: https://virida-frontend-3d.cleverapps.io" >> CHANGELOG.md
+          echo "- AI/ML: https://virida-ai-ml.cleverapps.io" >> CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          echo "### 🔗 Links:" >> CHANGELOG.md
+          echo "- Repository: https://gitea.com/Virida/devops" >> CHANGELOG.md
+          echo "- Documentation: [CI-CD-SUMMARY.md](./CI-CD-SUMMARY.md)" >> CHANGELOG.md
+          
+          changelog_content=$(cat CHANGELOG.md)
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$changelog_content" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: 📤 Upload Changelog
+        uses: actions/upload-artifact@v4
+        with:
+          name: changelog
+          path: CHANGELOG.md
+          retention-days: 30
 
   # ========================================
-  # BUILD DES IMAGES DOCKER
+  # BUILD DE RELEASE
   # ========================================
-  build-images:
+  build-release:
+    name: 🏗️ Build Release
     runs-on: ubuntu-latest
-    needs: [pre-release]
-    
-    strategy:
-      matrix:
-        service: [frontend-3d, frontend-dashboard, frontend-mobile, backend-api, backend-auth, backend-user, backend-business, ai-prediction, ai-eve, iot-sensor, iot-mqtt, iot-device]
-        
-    steps:
-    - name: 📥 Checkout code
-      uses: actions/checkout@v3
-      
-    - name: 🏗️ Build Docker image
-      run: |
-        # Build specific service image
-        docker build -t virida-${{ matrix.service }}:${{ github.ref_name }} .
-        
-    - name: 🏷️ Tag image
-      run: |
-        docker tag virida-${{ matrix.service }}:${{ github.ref_name }} virida-${{ matrix.service }}:latest
-        
-    - name: 📊 Upload image
-      uses: actions/upload-artifact@v3
-      with:
-        name: image-${{ matrix.service }}-${{ github.ref_name }}
-        path: virida-${{ matrix.service }}.tar
-
-  # ========================================
-  # GÉNÉRATION DES RELEASES
-  # ========================================
-  create-release:
-    runs-on: ubuntu-latest
-    needs: [build-images]
+    needs: prepare-release
     
     steps:
-    - name: 📥 Checkout code
-      uses: actions/checkout@v3
-      
-    - name: 📥 Download all images
-      uses: actions/download-artifact@v3
-      
-    - name: 📦 Create release package
-      run: |
-        mkdir -p release-package
-        cp -r frontend/ release-package/
-        cp -r backend/ release-package/
-        cp -r ai-ml/ release-package/
-        cp -r iot/ release-package/
-        cp -r infrastructure/ release-package/
-        cp Dockerfile.clever release-package/
-        cp docker-compose*.yml release-package/
-        cp Makefile* release-package/
-        cp README.md release-package/
-        
-        # Create release notes
-        echo "# VIRIDA Release ${{ github.ref_name }}" > release-package/RELEASE_NOTES.md
-        echo "" >> release-package/RELEASE_NOTES.md
-        echo "## Changes" >> release-package/RELEASE_NOTES.md
-        echo "" >> release-package/RELEASE_NOTES.md
-        echo "## Installation" >> release-package/RELEASE_NOTES.md
-        echo "" >> release-package/RELEASE_NOTES.md
-        echo "1. Extract this package" >> release-package/RELEASE_NOTES.md
-        echo "2. Run: make setup-env" >> release-package/RELEASE_NOTES.md
-        echo "3. Run: make dev" >> release-package/RELEASE_NOTES.md
-        echo "" >> release-package/RELEASE_NOTES.md
-        
-        tar -czf virida-${{ github.ref_name }}.tar.gz release-package/
-        
-    - name: 🚀 Create GitHub Release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ github.ref_name }}
-        release_name: VIRIDA ${{ github.ref_name }}
-        body_path: release-package/RELEASE_NOTES.md
-        draft: false
-        prerelease: false
-        
-    - name: 📤 Upload Release Assets
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./virida-${{ github.ref_name }}.tar.gz
-        asset_name: virida-${{ github.ref_name }}.tar.gz
-        asset_content_type: application/gzip
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: apps/frontend-3d/package-lock.json
+
+      - name: 🔧 Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: 📦 Install Dependencies
+        run: |
+          cd apps/frontend-3d && npm ci
+          cd ../ai-ml && pip install -r requirements.txt
+
+      - name: 🏗️ Build Applications
+        run: |
+          cd apps/frontend-3d && npm run build
+          cd ../ai-ml && echo "Python app ready"
+
+      - name: 📦 Package Release
+        run: |
+          mkdir -p release
+          cd apps/frontend-3d
+          tar -czf ../../release/frontend-3d-${{ needs.prepare-release.outputs.version }}.tar.gz dist/
+          cd ../ai-ml
+          tar -czf ../../release/ai-ml-${{ needs.prepare-release.outputs.version }}.tar.gz app/ requirements.txt
+          
+          # Create combined release package
+          cd ../../release
+          tar -czf virida-${{ needs.prepare-release.outputs.version }}.tar.gz *.tar.gz
+
+      - name: 📤 Upload Release Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ needs.prepare-release.outputs.version }}
+          path: release/
+          retention-days: 90
 
   # ========================================
-  # DÉPLOIEMENT AUTOMATIQUE
+  # DÉPLOIEMENT DE RELEASE
   # ========================================
   deploy-release:
+    name: 🚀 Deploy Release
     runs-on: ubuntu-latest
-    needs: [create-release]
-    if: github.ref_name =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/
+    needs: [prepare-release, build-release]
+    environment: production
     
     steps:
-    - name: 📥 Checkout code
-      uses: actions/checkout@v3
-      
-    - name: 🚀 Deploy to Clever Cloud
-      run: |
-        echo "🚀 Deploying VIRIDA ${{ github.ref_name }} to Clever Cloud..."
-        # This would trigger the deployment workflow
-        
-    - name: 📢 Notify deployment
-      run: |
-        echo "✅ VIRIDA ${{ github.ref_name }} deployed successfully!"
-        echo "🌐 URL: https://app-e10f4ca6-35ab-49e6-967f-cf1ebc40bc37.cleverapps.io/"
-        echo "📅 Deployed at: $(date)"
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 📥 Download Release Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-${{ needs.prepare-release.outputs.version }}
+
+      - name: 🔧 Setup Clever Cloud CLI
+        run: |
+          npm install -g clever-tools
+
+      - name: 🔐 Login to Clever Cloud
+        run: |
+          clever login --token ${{ secrets.CLEVER_CLOUD_TOKEN }} --secret ${{ secrets.CLEVER_CLOUD_SECRET }}
+
+      - name: 🚀 Deploy Frontend 3D
+        run: |
+          cd apps/frontend-3d
+          clever deploy --alias virida-frontend-3d --same-commit-policy rebuild
+
+      - name: 🚀 Deploy AI/ML
+        run: |
+          cd apps/ai-ml
+          clever deploy --alias virida-ai-ml --same-commit-policy rebuild
+
+      - name: 🧪 Health Check Release
+        run: |
+          sleep 90
+          curl -f https://virida-frontend-3d.cleverapps.io/health || exit 1
+          curl -f https://virida-ai-ml.cleverapps.io/health || exit 1
+          echo "✅ Release deployment successful!"
+
+  # ========================================
+  # CRÉATION DE LA RELEASE
+  # ========================================
+  create-release:
+    name: 📦 Create Release
+    runs-on: ubuntu-latest
+    needs: [prepare-release, build-release, deploy-release]
+    
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 📥 Download Release Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-${{ needs.prepare-release.outputs.version }}
+
+      - name: 📦 Create Release
+        uses: actions/create-release@v1
+        id: create_release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ needs.prepare-release.outputs.version }}
+          release_name: VIRIDA ${{ needs.prepare-release.outputs.version }}
+          body: |
+            ${{ needs.prepare-release.outputs.changelog }}
+            
+            ## 📦 Release Artifacts
+            - `frontend-3d-${{ needs.prepare-release.outputs.version }}.tar.gz`
+            - `ai-ml-${{ needs.prepare-release.outputs.version }}.tar.gz`
+            - `virida-${{ needs.prepare-release.outputs.version }}.tar.gz` (combined)
+            
+            ## 🚀 Deployed Services
+            - Frontend 3D: https://virida-frontend-3d.cleverapps.io
+            - AI/ML: https://virida-ai-ml.cleverapps.io
+            
+            ## 🔗 Links
+            - Repository: https://gitea.com/Virida/devops
+            - Documentation: [CI-CD-SUMMARY.md](./CI-CD-SUMMARY.md)
+          draft: false
+          prerelease: false
+
+      - name: 📤 Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/
+          asset_name: virida-${{ needs.prepare-release.outputs.version }}.tar.gz
+          asset_content_type: application/gzip
+
+  # ========================================
+  # NOTIFICATION DE RELEASE
+  # ========================================
+  notify-release:
+    name: 📢 Notify Release
+    runs-on: ubuntu-latest
+    needs: [create-release]
+    
+    steps:
+      - name: 📢 Notify Slack
+        uses: 8398a7/action-slack@v3
+        with:
+          status: success
+          channel: '#releases'
+          text: |
+            🎉 **NEW RELEASE: VIRIDA ${{ needs.prepare-release.outputs.version }}**
+            
+            **🚀 Deployed Services:**
+            - Frontend 3D: https://virida-frontend-3d.cleverapps.io
+            - AI/ML: https://virida-ai-ml.cleverapps.io
+            
+            **📦 Release Assets:**
+            - Download: https://gitea.com/Virida/devops/releases/tag/${{ needs.prepare-release.outputs.version }}
+            
+            **📝 Changelog:**
+            ${{ needs.prepare-release.outputs.changelog }}
+            
+            ---
+            *Automated release by Gitea Actions*
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: 📧 Notify Email
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.EMAIL_USERNAME }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          subject: "🚀 VIRIDA Release ${{ needs.prepare-release.outputs.version }}"
+          to: ${{ secrets.RELEASE_EMAIL_LIST }}
+          from: VIRIDA CI/CD
+          body: |
+            A new release of VIRIDA has been deployed!
+            
+            Version: ${{ needs.prepare-release.outputs.version }}
+            
+            Services:
+            - Frontend 3D: https://virida-frontend-3d.cleverapps.io
+            - AI/ML: https://virida-ai-ml.cleverapps.io
+            
+            Download: https://gitea.com/Virida/devops/releases/tag/${{ needs.prepare-release.outputs.version }}
+            
+            Changelog:
+            ${{ needs.prepare-release.outputs.changelog }}

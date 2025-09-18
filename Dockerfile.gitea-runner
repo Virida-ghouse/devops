@@ -1,0 +1,93 @@
+# 🚁 Gitea Runner Dockerfile pour VIRIDA
+FROM ubuntu:22.04
+
+# Métadonnées
+LABEL maintainer="VIRIDA Team"
+LABEL description="Gitea Runner pour pipeline CI/CD VIRIDA"
+LABEL version="1.0.0"
+
+# Variables d'environnement
+ENV DEBIAN_FRONTEND=noninteractive
+ENV GITEA_RUNNER_VERSION=0.3.0
+ENV NODE_VERSION=18
+ENV PYTHON_VERSION=3.11
+ENV GO_VERSION=1.22
+
+# Installation des dépendances système
+RUN apt-get update && apt-get install -y \
+    wget \
+    curl \
+    git \
+    unzip \
+    tar \
+    gzip \
+    ca-certificates \
+    gnupg \
+    lsb-release \
+    software-properties-common \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Installation de Docker
+RUN curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg \
+    && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null \
+    && apt-get update \
+    && apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin \
+    && rm -rf /var/lib/apt/lists/*
+
+# Installation de Node.js
+RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION}.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# Installation de Python
+RUN apt-get update && apt-get install -y \
+    python${PYTHON_VERSION} \
+    python${PYTHON_VERSION}-dev \
+    python${PYTHON_VERSION}-pip \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Installation de Go
+RUN wget https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz \
+    && tar -C /usr/local -xzf go${GO_VERSION}.linux-amd64.tar.gz \
+    && rm go${GO_VERSION}.linux-amd64.tar.gz
+
+# Configuration des variables d'environnement
+ENV PATH="/usr/local/go/bin:${PATH}"
+ENV GOROOT="/usr/local/go"
+ENV GOPATH="/go"
+
+# Installation de Clever Tools
+RUN npm install -g clever-tools
+
+# Installation de Gitea Runner
+RUN wget https://gitea.com/gitea/act_runner/releases/download/v${GITEA_RUNNER_VERSION}/act_runner-${GITEA_RUNNER_VERSION}-linux-amd64.tar.gz \
+    && tar -xzf act_runner-${GITEA_RUNNER_VERSION}-linux-amd64.tar.gz \
+    && mv act_runner /usr/local/bin/ \
+    && chmod +x /usr/local/bin/act_runner \
+    && rm act_runner-${GITEA_RUNNER_VERSION}-linux-amd64.tar.gz
+
+# Création du répertoire de travail
+WORKDIR /workspace
+
+# Création de l'utilisateur runner
+RUN useradd -m -s /bin/bash runner \
+    && usermod -aG docker runner \
+    && chown -R runner:runner /workspace
+
+# Script de démarrage
+COPY scripts/start-gitea-runner.sh /usr/local/bin/start-gitea-runner.sh
+RUN chmod +x /usr/local/bin/start-gitea-runner.sh
+
+# Configuration des labels par défaut
+ENV RUNNER_LABELS="ubuntu-latest:docker://node:18,ubuntu-20.04:docker://node:18,ubuntu-22.04:docker://node:22"
+
+# Ports exposés
+EXPOSE 8080
+
+# Utilisateur
+USER runner
+
+# Point d'entrée
+ENTRYPOINT ["/usr/local/bin/start-gitea-runner.sh"]

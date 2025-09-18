@@ -1,0 +1,164 @@
+---
+kind: pipeline
+type: docker
+name: 🧪 VIRIDA Staging Pipeline
+
+platform:
+  os: linux
+  arch: amd64
+
+environment:
+  NODE_VERSION: "18"
+  PYTHON_VERSION: "3.11"
+  GO_VERSION: "1.21"
+  ENVIRONMENT: "staging"
+
+trigger:
+  branch: [staging, develop]
+  event: [push, pull_request]
+
+steps:
+  - name: 📥 Checkout Code
+    image: alpine/git:latest
+    commands:
+      - git clone $DRONE_GIT_HTTP_URL .
+      - git checkout $DRONE_COMMIT_SHA
+
+  - name: 🔍 Lint & Format Check
+    image: node:18-alpine
+    commands:
+      - echo "🔍 Running lint and format checks..."
+      - cd apps/frontend-3d && npm ci --cache .npm
+      - cd apps/frontend-3d && npm run lint
+      - cd apps/frontend-3d && npm run format:check
+      - cd ../ai-ml && pip install -r requirements.txt
+      - cd ../ai-ml && python -m flake8 app/
+      - cd ../ai-ml && python -m black --check app/
+      - cd ../gitea-drone-ci && go fmt ./...
+      - cd ../gitea-drone-ci && go vet ./...
+
+  - name: 🧪 Unit Tests
+    image: node:18-alpine
+    commands:
+      - echo "🧪 Running unit tests..."
+      - cd apps/frontend-3d && npm run test:unit
+      - cd ../ai-ml && python -m pytest tests/unit/ -v
+      # Note: Gitea/Drone tests disabled - Gitea environment not working
+
+  - name: 🏗️ Build Applications
+    image: node:18-alpine
+    commands:
+      - echo "🏗️ Building applications for staging..."
+      - cd apps/frontend-3d && npm run build:staging
+      - cd ../ai-ml && python -m pip install --upgrade pip
+      # Note: Gitea/Drone build disabled - Gitea environment not working
+
+  - name: 🚀 Deploy to Staging
+    image: alpine:latest
+    commands:
+      - apk add --no-cache curl
+      - echo "🚀 Deploying to staging environment..."
+      
+      # Déployer chaque application
+      - cd apps/frontend-3d
+      - tar -czf frontend-3d-staging.tar.gz dist/
+      - curl -X POST "$CLEVER_DEPLOY_URL/frontend-3d-staging" \
+          -H "Authorization: Bearer $CLEVER_TOKEN" \
+          -F "archive=@frontend-3d-staging.tar.gz"
+      
+      - cd ../ai-ml
+      - tar -czf ai-ml-staging.tar.gz app/ requirements.txt wsgi.py
+      - curl -X POST "$CLEVER_DEPLOY_URL/ai-ml-staging" \
+          -H "Authorization: Bearer $CLEVER_TOKEN" \
+          -F "archive=@ai-ml-staging.tar.gz"
+      
+      # Note: Gitea/Drone deployment disabled - Gitea environment not working
+      # Only Gitea database is available on Clever Cloud
+
+  - name: 🧪 Staging Integration Tests
+    image: curlimages/curl:latest
+    commands:
+      - echo "🧪 Running staging integration tests..."
+      - sleep 60
+      
+      # Tests de santé
+      - curl -f https://virida-frontend-3d-staging.cleverapps.io/health || exit 1
+      - curl -f https://virida-ai-ml-staging.cleverapps.io/health || exit 1
+      # Note: Gitea/Drone health check disabled - Gitea environment not working
+      
+      # Tests fonctionnels
+      - curl -f https://virida-frontend-3d-staging.cleverapps.io/api/status || exit 1
+      - curl -f https://virida-ai-ml-staging.cleverapps.io/api/health || exit 1
+      
+      echo "✅ All staging tests passed!"
+
+  - name: 📊 Performance Tests
+    image: curlimages/curl:latest
+    commands:
+      - echo "📊 Running performance tests..."
+      
+      # Test de charge simple
+      - for i in {1..10}; do
+          response_time=$(curl -o /dev/null -s -w '%{time_total}' https://virida-frontend-3d-staging.cleverapps.io/)
+          echo "Request $i: ${response_time}s"
+          if [ $(echo "$response_time > 5.0" | bc -l) -eq 1 ]; then
+            echo "⚠️ Warning: High response time detected"
+          fi
+        done
+
+  - name: 📢 Staging Notification
+    image: alpine:latest
+    commands:
+      - apk add --no-cache curl
+      - curl -X POST "$SLACK_WEBHOOK_URL" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "text": "🧪 VIRIDA staging deployment completed",
+            "attachments": [{
+              "color": "warning",
+              "fields": [{
+                "title": "Environment",
+                "value": "Staging",
+                "short": true
+              }, {
+                "title": "Branch",
+                "value": "'$DRONE_BRANCH'",
+                "short": true
+              }, {
+                "title": "URLs",
+                "value": "Frontend: https://virida-frontend-3d-staging.cleverapps.io\nAI/ML: https://virida-ai-ml-staging.cleverapps.io\nGitea DB: Available on Clever Cloud",
+                "short": false
+              }]
+            }]
+          }'
+
+services:
+  - name: postgres
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: virida_staging
+      POSTGRES_USER: staging
+      POSTGRES_PASSWORD: staging
+    ports:
+      - 5432
+
+  - name: redis
+    image: redis:7-alpine
+    ports:
+      - 6379
+
+cache:
+  - name: node_modules
+    mount: /workspace/apps/frontend-3d/node_modules
+  - name: python_cache
+    mount: /root/.cache/pip
+  - name: go_modules
+    mount: /go/pkg/mod
+
+volumes:
+  - name: node_modules
+    temp: {}
+  - name: python_cache
+    temp: {}
+  - name: go_modules
+    temp: {}
