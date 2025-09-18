@@ -9,6 +9,7 @@
   },
   "environment": {
     "PYTHON_VERSION": "3.11",
+    "CC_PYTHON_MODULE": "app:app",
     "PROMETHEUS_PORT": "9090"
   }
 }

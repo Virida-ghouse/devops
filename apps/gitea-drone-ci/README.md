@@ -37,7 +37,7 @@ Application Go qui déploie et configure automatiquement Gitea avec Drone CI sur
 
 1. **Créer l'application sur Clever Cloud :**
 ```bash
-cd apps/gitea-drone-ci
+cd apps/     gitea-drone-ci
 clever create --type go gitea-drone-ci
 ```
 
@@ -184,3 +184,4 @@ En cas de problème :
 ---
 
 **🎉 Votre Gitea + Drone CI est maintenant opérationnel sur Clever Cloud !**
+
