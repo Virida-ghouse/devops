@@ -1,0 +1,15 @@
+{
+  "build": {
+    "type": "python",
+    "buildCommand": "pip install -r requirements.txt"
+  },
+  "deploy": {
+    "target": "grafana-simple",
+    "command": "python app.py"
+  },
+  "environment": {
+    "PYTHON_VERSION": "3.11",
+    "GRAFANA_PORT": "3000",
+    "GRAFANA_PASSWORD": "virida-admin-2024"
+  }
+}

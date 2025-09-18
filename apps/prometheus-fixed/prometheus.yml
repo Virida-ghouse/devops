@@ -1,0 +1,35 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - "rules.yml"
+
+scrape_configs:
+  # Prometheus lui-même
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # VIRIDA Applications
+  - job_name: 'virida-apps'
+    static_configs:
+      - targets: 
+        - 'virida-frontend-3d.cleverapps.io:8080'
+        - 'virida-ai-ml.cleverapps.io:8080'
+        - 'virida-grafana.cleverapps.io:3000'
+        - 'gitea-drone-ci.cleverapps.io:8080'
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+
+  # Node Exporter (si disponible)
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['localhost:9100']
+
+  # Custom VIRIDA metrics
+  - job_name: 'virida-environmental'
+    static_configs:
+      - targets: ['virida-ai-ml.cleverapps.io:8080']
+    metrics_path: '/api/metrics'
+    scrape_interval: 60s

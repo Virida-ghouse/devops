@@ -39,6 +39,14 @@
       "git_ssh_url": "git+ssh://git@push-n3-par-clevercloud-customers.services.clever-cloud.com/app_a506588f-bf5d-4d2b-bf7f-894ce71ead62.git",
       "name": "VIRIDA",
       "alias": "virida-ai-ml-new"
+    },
+    {
+      "app_id": "app_a63c52b8-b6c3-4edb-8ac1-f8f8004917ab",
+      "org_id": "user_706f4a8c-f710-46a2-89b7-a8e457a524aa",
+      "deploy_url": "https://push-n3-par-clevercloud-customers.services.clever-cloud.com/app_a63c52b8-b6c3-4edb-8ac1-f8f8004917ab.git",
+      "git_ssh_url": "git+ssh://git@push-n3-par-clevercloud-customers.services.clever-cloud.com/app_a63c52b8-b6c3-4edb-8ac1-f8f8004917ab.git",
+      "name": "virida-grafana-simple",
+      "alias": "virida-grafana-simple"
     }
   ]
 }

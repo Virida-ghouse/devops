@@ -42,3 +42,4 @@ echo "📋 Variables à configurer :"
 echo "- GITEA_CLIENT_ID"
 echo "- GITEA_CLIENT_SECRET"
 echo "- DRONE_SECRET"
+

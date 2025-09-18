@@ -181,3 +181,4 @@ clever logs --alias gitea-drone-ci | grep drone
 ---
 
 **🎉 Votre Gitea + Drone CI est maintenant opérationnel sur Clever Cloud !**
+

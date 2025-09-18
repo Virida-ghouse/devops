@@ -58,3 +58,4 @@ echo "✅ Configuration terminée !"
 echo "📊 Répertoire de données: $DATA_DIR"
 echo "🌐 Gitea sera disponible sur le port: $GITEA_PORT"
 echo "🚀 Drone CI sera disponible sur le port: $DRONE_PORT"
+

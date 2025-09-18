@@ -42,3 +42,4 @@ echo ""
 echo "✅ Copiez-collez ces variables dans Clever Cloud"
 echo "📍 Allez dans : Settings > Environment variables"
 echo "➕ Cliquez sur 'Add an environment variable' pour chaque ligne"
+
