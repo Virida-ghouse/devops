@@ -1,35 +1,35 @@
-# 🚀 VIRIDA - CI/CD avec Gitea Actions
+# 🚀 VIRIDA - CI/CD Infrastructure avec Gitea Actions
 
-**Plateforme IoT/IA avec infrastructure DevOps moderne**
+**Infrastructure DevOps moderne avec SonarQube et Clever Cloud**
 
 ## 📋 Vue d'Ensemble
 
-VIRIDA est une plateforme complète de développement IoT/IA avec une infrastructure DevOps automatisée basée sur **Gitea Actions** et déployée sur **Clever Cloud**.
+VIRIDA est une infrastructure CI/CD complète basée sur **Gitea Actions**, **SonarQube** et déployée sur **Clever Cloud**. Focus exclusif sur l'intégration continue et l'analyse de code.
 
 ## 🏗️ Architecture
 
 ```
 VIRIDA/
 ├── .gitea/workflows/     # Workflows Gitea Actions
-├── apps/                 # Applications
-│   ├── frontend-3d/      # Interface 3D (Node.js)
-│   └── ai-ml/           # Intelligence Artificielle (Python)
-├── scripts/             # Scripts de déploiement
-└── docs/               # Documentation
+├── scripts/              # Scripts de déploiement CI/CD
+├── Dockerfile.gitea-runner  # Runner Gitea Actions
+├── Dockerfile.sonarqube     # SonarQube pour analyse
+├── clever-entrypoint.sh     # Script Clever Cloud
+└── *.json                  # Configurations Clever Cloud
 ```
 
 ## 🚀 Démarrage Rapide
 
-### 1. **Upload du Code**
-```bash
-# Afficher les instructions d'upload
-./scripts/upload-to-gitea.sh
-```
-
-### 2. **Configuration du Runner**
+### 1. **Configuration du Runner Gitea**
 ```bash
 # Configuration complète
 ./scripts/configure-gitea-complete.sh
+```
+
+### 2. **Déploiement SonarQube**
+```bash
+# Déployer SonarQube sur Clever Cloud
+./scripts/deploy-sonarqube.sh
 ```
 
 ### 3. **Test du Pipeline**
@@ -40,33 +40,40 @@ VIRIDA/
 
 ## 🔧 Pipeline CI/CD
 
-### **9 Stages Automatisés**
+### **8 Stages Automatisés**
 1. **validate** - Validation du code et YAML
-2. **test** - Tests unitaires (Frontend, AI/ML)
-3. **build** - Construction des applications
+2. **test** - Tests des scripts CI/CD
+3. **build** - Construction de l'infrastructure
 4. **security** - Scan de sécurité (Trivy)
-5. **deploy-staging** - Déploiement staging
-6. **test-staging** - Tests d'intégration
+5. **sonarqube** - Analyse de code avec SonarQube
+6. **deploy-staging** - Déploiement staging
 7. **deploy-production** - Déploiement production
-8. **test-production** - Tests de production
-9. **monitor** - Monitoring et alertes
+8. **notify** - Notifications des résultats
 
-### **Applications Supportées**
-- **Frontend 3D** : Node.js 18 + React + Three.js
-- **AI/ML** : Python 3.11 + Flask + Gunicorn
+### **Composants CI/CD**
+- **Gitea Actions** : Orchestration des pipelines
+- **SonarQube** : Analyse de code et qualité
+- **Trivy** : Scan de sécurité
+- **Clever Cloud** : Plateforme de déploiement
 
 ## 📊 Fonctionnalités
 
 ### ✅ **CI/CD Automatisé**
+- Pipelines Gitea Actions complets
 - Déploiements automatiques vers Clever Cloud
-- Tests unitaires et d'intégration
-- Scan de sécurité intégré
+- Tests et validation automatiques
 - Rollback automatique
+
+### ✅ **Analyse de Code**
+- SonarQube intégré pour l'analyse de qualité
+- Scan de sécurité avec Trivy
+- Métriques de couverture de code
+- Détection des vulnérabilités
 
 ### ✅ **Monitoring**
 - Health checks automatiques
 - Logs centralisés
-- Alertes Slack (optionnel)
+- Alertes et notifications
 - Métriques de performance
 
 ### ✅ **Sécurité**
@@ -79,11 +86,12 @@ VIRIDA/
 
 | Script | Description |
 |--------|-------------|
+| `configure-gitea-complete.sh` | Configuration complète du runner |
 | `configure-gitea-runner-manual.sh` | Configuration manuelle du runner |
-| `configure-gitea-complete.sh` | Configuration complète |
 | `setup-gitea-runner.sh` | Installation du runner |
 | `start-gitea-runner.sh` | Démarrage du runner |
 | `test-pipeline-gitea.sh` | Test du pipeline |
+| `deploy-sonarqube.sh` | Déploiement SonarQube |
 
 ## 📚 Documentation
 
@@ -98,9 +106,9 @@ VIRIDA/
 
 ## 🎯 Prochaines Étapes
 
-1. **Uploader le code** vers Gitea
-2. **Configurer le runner** Gitea
-3. **Ajouter les secrets** (CLEVER_TOKEN, CLEVER_SECRET)
+1. **Configurer le runner** Gitea
+2. **Déployer SonarQube** sur Clever Cloud
+3. **Ajouter les secrets** (CLEVER_TOKEN, CLEVER_SECRET, SONAR_TOKEN, SONAR_HOST_URL)
 4. **Tester le pipeline** avec un commit
 
 ## 🆘 Support
@@ -111,8 +119,11 @@ VIRIDA/
 
 # Configuration manuelle
 ./scripts/configure-gitea-runner-manual.sh
+
+# Déploiement SonarQube
+./scripts/deploy-sonarqube.sh
 ```
 
 ---
 
-**VIRIDA - Infrastructure DevOps Moderne avec Gitea Actions** 🚀
+**VIRIDA - Infrastructure CI/CD Moderne avec Gitea Actions et SonarQube** 🚀
