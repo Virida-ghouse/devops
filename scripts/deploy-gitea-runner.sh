@@ -1,9 +1,16 @@
 #!/bin/bash
 
-# 🚁 Script de déploiement Gitea Runner pour VIRIDA
-# Ce script déploie Gitea Runner sur Clever Cloud
+# Script de déploiement du Gitea Runner sur Clever Cloud
+# Usage: ./deploy-gitea-runner.sh
 
 set -e
+
+echo "🚀 Déploiement du Gitea Runner sur Clever Cloud"
+echo "==============================================="
+
+# Variables
+APP_NAME="virida-gitea-runner"
+CLEVER_ORG="orga_a7844a87-3356-462b-9e22-ce6c5437b0aa"
 
 # Couleurs pour les logs
 RED='\033[0;31m'
@@ -12,167 +19,181 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Fonctions de logging
-log() {
-    echo -e "${BLUE}[$(date +'%Y-%m-%d %H:%M:%S')] $1${NC}"
+log_info() {
+    echo -e "${GREEN}[INFO]${NC} $1"
 }
 
-success() {
-    echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')] ✅ $1${NC}"
+log_warn() {
+    echo -e "${YELLOW}[WARN]${NC} $1"
 }
 
-warning() {
-    echo -e "${YELLOW}[$(date +'%Y-%m-%d %H:%M:%S')] ⚠️ $1${NC}"
+log_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
 }
 
-error() {
-    echo -e "${RED}[$(date +'%Y-%m-%d %H:%M:%S')] ❌ $1${NC}"
+log_debug() {
+    echo -e "${BLUE}[DEBUG]${NC} $1"
 }
 
-# Configuration
-APP_NAME="gitea-runner"
-CLEVER_ALIAS="virida-gitea-runner"
-DOCKERFILE="Dockerfile.gitea-runner"
-CONFIG_FILE="clevercloud-gitea-runner.json"
+# Vérifier les prérequis
+check_prerequisites() {
+    log_info "Vérification des prérequis..."
+    
+    # Vérifier Clever CLI
+    if ! command -v clever &> /dev/null; then
+        log_error "Clever CLI n'est pas installé. Installez-le d'abord :"
+        echo "curl -fsSL https://clever-tools.clever-cloud.com/releases/2.7.0/clever-tools-linux.tar.gz | tar -xz"
+        echo "sudo mv clever /usr/local/bin/"
+        exit 1
+    fi
+    
+    # Vérifier Docker
+    if ! command -v docker &> /dev/null; then
+        log_error "Docker n'est pas installé."
+        exit 1
+    fi
+    
+    log_info "Prérequis OK ✓"
+}
 
-log "🚁 Déploiement de Gitea Runner pour VIRIDA"
-
-# Vérification des prérequis
-log "🔍 Vérification des prérequis..."
-
-# Vérification de Clever Tools
-if ! command -v clever &> /dev/null; then
-    error "Clever Tools n'est pas installé"
-    log "Installation de Clever Tools..."
-    npm install -g clever-tools
-fi
-
-# Vérification de la connexion Clever Cloud
-if ! clever status &> /dev/null; then
-    warning "Non connecté à Clever Cloud"
-    log "Connexion à Clever Cloud..."
+# Se connecter à Clever Cloud
+login_clever() {
+    log_info "Connexion à Clever Cloud..."
+    
+    # Vérifier si déjà connecté
+    if clever status &> /dev/null; then
+        log_info "Déjà connecté à Clever Cloud ✓"
+        return
+    fi
+    
+    # Demander les credentials
+    echo ""
+    echo "Veuillez entrer vos credentials Clever Cloud :"
+    read -p "Token: " CLEVER_TOKEN
+    read -p "Secret: " CLEVER_SECRET
+    
     if [ -z "$CLEVER_TOKEN" ] || [ -z "$CLEVER_SECRET" ]; then
-        error "CLEVER_TOKEN et CLEVER_SECRET doivent être définis"
+        log_error "Token et Secret requis"
         exit 1
     fi
+    
+    # Se connecter
     clever login --token "$CLEVER_TOKEN" --secret "$CLEVER_SECRET"
-fi
+    
+    log_info "Connecté à Clever Cloud ✓"
+}
 
-success "Prérequis OK"
+# Créer l'application
+create_app() {
+    log_info "Création de l'application $APP_NAME..."
+    
+    # Vérifier si l'app existe déjà
+    if clever apps | grep -q "$APP_NAME"; then
+        log_warn "L'application $APP_NAME existe déjà"
+        return
+    fi
+    
+    # Créer l'application
+    clever create --type docker "$APP_NAME" --org "$CLEVER_ORG"
+    
+    log_info "Application $APP_NAME créée ✓"
+}
 
-# Vérification des fichiers
-log "📁 Vérification des fichiers..."
+# Configurer l'application
+configure_app() {
+    log_info "Configuration de l'application..."
+    
+    # Lier l'application
+    clever link --alias "$APP_NAME"
+    
+    # Configurer les variables d'environnement
+    log_info "Configuration des variables d'environnement..."
+    
+    # Variables Gitea
+    clever env set GITEA_INSTANCE_URL "https://app-5d976fde-cfd7-4662-9fff-49ed6f693eee.cleverapps.io"
+    clever env set RUNNER_NAME "virida-runner-clever"
+    clever env set RUNNER_LABELS "ubuntu-latest:docker://node:18,ubuntu-latest:docker://python:3.11,ubuntu-latest:docker://golang:1.21"
+    
+    # Variables de monitoring
+    clever env set MONITORING_ENABLED "true"
+    clever env set LOG_LEVEL "info"
+    
+    log_info "Variables d'environnement configurées ✓"
+}
 
-if [ ! -f "$DOCKERFILE" ]; then
-    error "Dockerfile non trouvé: $DOCKERFILE"
-    exit 1
-fi
+# Construire et déployer
+build_and_deploy() {
+    log_info "Construction et déploiement..."
+    
+    # Construire l'image Docker
+    log_info "Construction de l'image Docker..."
+    docker build -f Dockerfile.gitea-runner -t "$APP_NAME:latest" .
+    
+    # Déployer
+    log_info "Déploiement sur Clever Cloud..."
+    clever deploy
+    
+    log_info "Déploiement terminé ✓"
+}
 
-if [ ! -f "$CONFIG_FILE" ]; then
-    error "Fichier de configuration non trouvé: $CONFIG_FILE"
-    exit 1
-fi
-
-if [ ! -f "scripts/start-gitea-runner.sh" ]; then
-    error "Script de démarrage non trouvé: scripts/start-gitea-runner.sh"
-    exit 1
-fi
-
-success "Fichiers OK"
-
-# Création de l'application Clever Cloud
-log "🏗️ Création de l'application Clever Cloud..."
-
-# Vérification si l'application existe déjà
-if clever applications --json | grep -q "\"alias\": \"$CLEVER_ALIAS\""; then
-    log "📋 Application existante trouvée: $CLEVER_ALIAS"
-    clever link "$CLEVER_ALIAS"
-else
-    log "✨ Création de la nouvelle application: $CLEVER_ALIAS"
-    clever create --type docker "$CLEVER_ALIAS"
-    clever link "$CLEVER_ALIAS"
-fi
-
-# Configuration des variables d'environnement
-log "🔧 Configuration des variables d'environnement..."
-
-# Variables obligatoires
-REQUIRED_VARS=(
-    "GITEA_INSTANCE_URL"
-    "GITEA_TOKEN"
-    "RUNNER_NAME"
-    "RUNNER_LABELS"
-)
-
-for var in "${REQUIRED_VARS[@]}"; do
-    if [ -z "${!var}" ]; then
-        error "Variable d'environnement manquante: $var"
-        log "Veuillez définir $var avant de continuer"
+# Vérifier le déploiement
+verify_deployment() {
+    log_info "Vérification du déploiement..."
+    
+    # Attendre que l'app soit prête
+    log_info "Attente du démarrage de l'application..."
+    sleep 30
+    
+    # Vérifier le statut
+    if clever status --alias "$APP_NAME" | grep -q "running"; then
+        log_info "Application démarrée avec succès ✓"
+    else
+        log_error "L'application ne démarre pas correctement"
+        clever logs --alias "$APP_NAME"
         exit 1
     fi
-done
+    
+    # Afficher les logs
+    log_info "Logs de l'application :"
+    clever logs --alias "$APP_NAME" --lines=20
+}
 
-# Configuration des variables dans Clever Cloud
-clever env set GITEA_INSTANCE_URL "$GITEA_INSTANCE_URL" --alias "$CLEVER_ALIAS"
-clever env set GITEA_TOKEN "$GITEA_TOKEN" --alias "$CLEVER_ALIAS"
-clever env set RUNNER_NAME "$RUNNER_NAME" --alias "$CLEVER_ALIAS"
-clever env set RUNNER_LABELS "$RUNNER_LABELS" --alias "$CLEVER_ALIAS"
-clever env set RUNNER_WORK_DIR "/workspace" --alias "$CLEVER_ALIAS"
-clever env set DOCKER_BUILDKIT "1" --alias "$CLEVER_ALIAS"
-clever env set COMPOSE_DOCKER_CLI_BUILD "1" --alias "$CLEVER_ALIAS"
+# Afficher les informations de connexion
+show_connection_info() {
+    echo ""
+    log_info "Déploiement terminé avec succès ! 🎉"
+    echo ""
+    echo "Informations de connexion :"
+    echo "  Application: $APP_NAME"
+    echo "  Organisation: $CLEVER_ORG"
+    echo "  URL: https://$APP_NAME.cleverapps.io"
+    echo ""
+    echo "Pour configurer le runner dans Gitea :"
+    echo "1. Allez sur https://app-5d976fde-cfd7-4662-9fff-49ed6f693eee.cleverapps.io/admin/actions/runners"
+    echo "2. Créez un nouveau runner"
+    echo "3. Utilisez l'URL de l'application comme endpoint"
+    echo ""
+    echo "Commandes utiles :"
+    echo "  clever logs --alias $APP_NAME    # Voir les logs"
+    echo "  clever status --alias $APP_NAME  # Voir le statut"
+    echo "  clever restart --alias $APP_NAME # Redémarrer"
+    echo ""
+}
 
-success "Variables d'environnement configurées"
+# Fonction principale
+main() {
+    echo ""
+    log_info "Début du déploiement du Gitea Runner"
+    echo ""
+    
+    check_prerequisites
+    login_clever
+    create_app
+    configure_app
+    build_and_deploy
+    verify_deployment
+    show_connection_info
+}
 
-# Déploiement
-log "🚀 Déploiement de Gitea Runner..."
-
-# Copie des fichiers nécessaires
-cp "$DOCKERFILE" Dockerfile
-cp "$CONFIG_FILE" clevercloud.json
-
-# Déploiement
-clever deploy --alias "$CLEVER_ALIAS" --same-commit-policy rebuild
-
-if [ $? -eq 0 ]; then
-    success "Déploiement réussi!"
-else
-    error "Échec du déploiement"
-    exit 1
-fi
-
-# Vérification du déploiement
-log "🧪 Vérification du déploiement..."
-
-# Attente du démarrage
-log "⏳ Attente du démarrage (60s)..."
-sleep 60
-
-# Vérification des logs
-log "📋 Vérification des logs..."
-clever logs --alias "$CLEVER_ALIAS" --lines 50
-
-# Vérification du statut
-log "📊 Vérification du statut..."
-clever status --alias "$CLEVER_ALIAS"
-
-# Affichage des informations
-log "📋 Informations de déploiement:"
-echo "  - Application: $CLEVER_ALIAS"
-echo "  - URL: https://$CLEVER_ALIAS.cleverapps.io"
-echo "  - Type: Docker"
-echo "  - Runner: $RUNNER_NAME"
-echo "  - Labels: $RUNNER_LABELS"
-
-success "🎉 Gitea Runner déployé avec succès!"
-
-# Instructions finales
-log "📝 Prochaines étapes:"
-echo "  1. Vérifiez les logs: clever logs --alias $CLEVER_ALIAS"
-echo "  2. Configurez les secrets dans Gitea"
-echo "  3. Testez les workflows Gitea Actions"
-echo "  4. Configurez les notifications Slack/Email"
-
-# Nettoyage
-rm -f Dockerfile clevercloud.json
-
-success "🚁 Déploiement Gitea Runner terminé!"
+# Exécuter le script
+main "$@"

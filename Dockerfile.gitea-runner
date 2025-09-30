@@ -1,93 +1,128 @@
-# 🚁 Gitea Runner Dockerfile pour VIRIDA
+# Dockerfile pour Gitea Runner VIRIDA
 FROM ubuntu:22.04
-
-# Métadonnées
-LABEL maintainer="VIRIDA Team"
-LABEL description="Gitea Runner pour pipeline CI/CD VIRIDA"
-LABEL version="1.0.0"
 
 # Variables d'environnement
 ENV DEBIAN_FRONTEND=noninteractive
-ENV GITEA_RUNNER_VERSION=0.3.0
-ENV NODE_VERSION=18
-ENV PYTHON_VERSION=3.11
-ENV GO_VERSION=1.22
+ENV ACT_RUNNER_VERSION=0.3.0
+ENV GITEA_INSTANCE_URL=""
+ENV RUNNER_NAME="virida-runner"
+ENV RUNNER_LABELS="ubuntu-latest:docker://node:18,ubuntu-latest:docker://python:3.11,ubuntu-latest:docker://golang:1.21"
 
-# Installation des dépendances système
+# Installer les dépendances système
 RUN apt-get update && apt-get install -y \
     wget \
     curl \
     git \
-    unzip \
-    tar \
-    gzip \
+    docker.io \
+    docker-compose \
+    build-essential \
     ca-certificates \
     gnupg \
     lsb-release \
     software-properties-common \
-    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Installation de Docker
-RUN curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg \
-    && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null \
+# Installer Node.js 18
+RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
+    && apt-get install -y nodejs
+
+# Installer Python 3.11
+RUN add-apt-repository ppa:deadsnakes/ppa \
     && apt-get update \
-    && apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get install -y python3.11 python3.11-pip python3.11-venv \
+    && ln -s /usr/bin/python3.11 /usr/bin/python3 \
+    && ln -s /usr/bin/python3.11 /usr/bin/python
 
-# Installation de Node.js
-RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION}.x | bash - \
-    && apt-get install -y nodejs \
-    && rm -rf /var/lib/apt/lists/*
-
-# Installation de Python
-RUN apt-get update && apt-get install -y \
-    python${PYTHON_VERSION} \
-    python${PYTHON_VERSION}-dev \
-    python${PYTHON_VERSION}-pip \
-    python3-pip \
-    && rm -rf /var/lib/apt/lists/*
-
-# Installation de Go
-RUN wget https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz \
-    && tar -C /usr/local -xzf go${GO_VERSION}.linux-amd64.tar.gz \
-    && rm go${GO_VERSION}.linux-amd64.tar.gz
-
-# Configuration des variables d'environnement
+# Installer Go 1.21
+RUN wget https://go.dev/dl/go1.21.0.linux-amd64.tar.gz \
+    && tar -C /usr/local -xzf go1.21.0.linux-amd64.tar.gz \
+    && rm go1.21.0.linux-amd64.tar.gz
 ENV PATH="/usr/local/go/bin:${PATH}"
-ENV GOROOT="/usr/local/go"
-ENV GOPATH="/go"
 
-# Installation de Clever Tools
-RUN npm install -g clever-tools
+# Installer Clever Cloud CLI
+RUN curl -fsSL https://clever-tools.clever-cloud.com/releases/2.7.0/clever-tools-linux.tar.gz | tar -xz \
+    && mv clever /usr/local/bin/ \
+    && chmod +x /usr/local/bin/clever
 
-# Installation de Gitea Runner
-RUN wget https://gitea.com/gitea/act_runner/releases/download/v${GITEA_RUNNER_VERSION}/act_runner-${GITEA_RUNNER_VERSION}-linux-amd64.tar.gz \
-    && tar -xzf act_runner-${GITEA_RUNNER_VERSION}-linux-amd64.tar.gz \
-    && mv act_runner /usr/local/bin/ \
-    && chmod +x /usr/local/bin/act_runner \
-    && rm act_runner-${GITEA_RUNNER_VERSION}-linux-amd64.tar.gz
-
-# Création du répertoire de travail
-WORKDIR /workspace
-
-# Création de l'utilisateur runner
+# Créer un utilisateur pour le runner
 RUN useradd -m -s /bin/bash runner \
-    && usermod -aG docker runner \
-    && chown -R runner:runner /workspace
+    && usermod -aG docker runner
 
-# Script de démarrage
+# Créer le répertoire de travail
+WORKDIR /opt/gitea-runner
+RUN chown -R runner:runner /opt/gitea-runner
+
+# Télécharger et installer act_runner
+RUN wget https://gitea.com/gitea/act_runner/releases/download/v${ACT_RUNNER_VERSION}/act_runner-${ACT_RUNNER_VERSION}-linux-amd64.tar.gz \
+    && tar -xzf act_runner-${ACT_RUNNER_VERSION}-linux-amd64.tar.gz \
+    && chmod +x act_runner \
+    && mv act_runner /usr/local/bin/ \
+    && rm act_runner-${ACT_RUNNER_VERSION}-linux-amd64.tar.gz
+
+# Copier les scripts
 COPY scripts/start-gitea-runner.sh /usr/local/bin/start-gitea-runner.sh
 RUN chmod +x /usr/local/bin/start-gitea-runner.sh
 
-# Configuration des labels par défaut
-ENV RUNNER_LABELS="ubuntu-latest:docker://node:18,ubuntu-20.04:docker://node:18,ubuntu-22.04:docker://node:22"
+# Créer le répertoire de configuration
+RUN mkdir -p /opt/gitea-runner/.runner
 
-# Ports exposés
+# Exposer le port (si nécessaire)
 EXPOSE 8080
 
-# Utilisateur
+# Script de démarrage
+COPY <<EOF /usr/local/bin/entrypoint.sh
+#!/bin/bash
+set -e
+
+echo "🚀 Démarrage du Gitea Runner VIRIDA"
+echo "===================================="
+
+# Vérifier les variables d'environnement
+if [ -z "\$GITEA_INSTANCE_URL" ]; then
+    echo "❌ GITEA_INSTANCE_URL n'est pas définie"
+    exit 1
+fi
+
+if [ -z "\$RUNNER_NAME" ]; then
+    echo "❌ RUNNER_NAME n'est pas définie"
+    exit 1
+fi
+
+echo "Instance Gitea: \$GITEA_INSTANCE_URL"
+echo "Nom du runner: \$RUNNER_NAME"
+echo "Labels: \$RUNNER_LABELS"
+echo ""
+
+# Démarrer Docker si nécessaire
+if ! docker info &> /dev/null; then
+    echo "Démarrage de Docker..."
+    service docker start
+    sleep 5
+fi
+
+# Vérifier si le runner est déjà enregistré
+if [ ! -f "/opt/gitea-runner/.runner" ]; then
+    echo "⚠️  Le runner n'est pas enregistré"
+    echo "Vous devez d'abord l'enregistrer avec :"
+    echo "act_runner register --instance \$GITEA_INSTANCE_URL --token YOUR_TOKEN --name \$RUNNER_NAME --labels \"\$RUNNER_LABELS\""
+    echo ""
+    echo "Pour obtenir le token :"
+    echo "1. Allez sur \$GITEA_INSTANCE_URL/admin/actions/runners"
+    echo "2. Créez un nouveau runner"
+    echo "3. Copiez le token d'enregistrement"
+    echo ""
+    echo "En attendant, le runner va essayer de se connecter..."
+fi
+
+# Démarrer act_runner
+echo "Démarrage d'act_runner..."
+exec act_runner daemon
+EOF
+
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# Changer vers l'utilisateur runner
 USER runner
 
 # Point d'entrée
-ENTRYPOINT ["/usr/local/bin/start-gitea-runner.sh"]
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

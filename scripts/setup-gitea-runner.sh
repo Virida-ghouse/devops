@@ -1,273 +1,188 @@
 #!/bin/bash
 
-# 🚁 Script de configuration Gitea Runner pour VIRIDA
-# Ce script guide l'utilisateur à travers la configuration complète
+# Script de configuration du Gitea Runner pour VIRIDA
+# Usage: ./setup-gitea-runner.sh
 
 set -e
+
+echo "🚀 Configuration du Gitea Runner pour VIRIDA"
+echo "============================================="
+
+# Variables
+GITEA_URL="https://app-5d976fde-cfd7-4662-9fff-49ed6f693eee.cleverapps.io"
+RUNNER_NAME="virida-runner-$(hostname)"
+RUNNER_LABELS="ubuntu-latest:docker://node:18,ubuntu-latest:docker://python:3.11,ubuntu-latest:docker://golang:1.21"
 
 # Couleurs pour les logs
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Fonctions de logging
-log() {
-    echo -e "${BLUE}[$(date +'%Y-%m-%d %H:%M:%S')] $1${NC}"
+log_info() {
+    echo -e "${GREEN}[INFO]${NC} $1"
 }
 
-success() {
-    echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')] ✅ $1${NC}"
+log_warn() {
+    echo -e "${YELLOW}[WARN]${NC} $1"
 }
 
-warning() {
-    echo -e "${YELLOW}[$(date +'%Y-%m-%d %H:%M:%S')] ⚠️ $1${NC}"
+log_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
 }
 
-error() {
-    echo -e "${RED}[$(date +'%Y-%m-%d %H:%M:%S')] ❌ $1${NC}"
-}
-
-log "🚁 Configuration Gitea Runner pour VIRIDA"
-echo ""
-
-# Étape 1: Vérification des prérequis
-log "📋 Étape 1: Vérification des prérequis..."
-
-# Vérification de Clever Tools
-if ! command -v clever &> /dev/null; then
-    error "Clever Tools n'est pas installé"
-    log "Installation de Clever Tools..."
-    npm install -g clever-tools
-    if [ $? -eq 0 ]; then
-        success "Clever Tools installé"
-    else
-        error "Échec de l'installation de Clever Tools"
+# Vérifier les prérequis
+check_prerequisites() {
+    log_info "Vérification des prérequis..."
+    
+    # Vérifier Docker
+    if ! command -v docker &> /dev/null; then
+        log_error "Docker n'est pas installé. Veuillez l'installer d'abord."
         exit 1
     fi
-else
-    success "Clever Tools OK"
-fi
+    
+    # Vérifier wget
+    if ! command -v wget &> /dev/null; then
+        log_error "wget n'est pas installé. Veuillez l'installer d'abord."
+        exit 1
+    fi
+    
+    log_info "Prérequis OK ✓"
+}
 
-# Vérification de Docker
-if ! command -v docker &> /dev/null; then
-    warning "Docker n'est pas installé (optionnel pour le développement local)"
-else
-    success "Docker OK"
-fi
+# Télécharger et installer act_runner
+install_act_runner() {
+    log_info "Installation d'act_runner..."
+    
+    # Créer le répertoire
+    mkdir -p /opt/gitea-runner
+    cd /opt/gitea-runner
+    
+    # Télécharger act_runner
+    ACT_RUNNER_VERSION="0.3.0"
+    ACT_RUNNER_URL="https://gitea.com/gitea/act_runner/releases/download/v${ACT_RUNNER_VERSION}/act_runner-${ACT_RUNNER_VERSION}-linux-amd64.tar.gz"
+    
+    log_info "Téléchargement d'act_runner v${ACT_RUNNER_VERSION}..."
+    wget -O act_runner.tar.gz "$ACT_RUNNER_URL"
+    
+    # Extraire
+    tar -xzf act_runner.tar.gz
+    chmod +x act_runner
+    
+    # Créer un lien symbolique
+    ln -sf /opt/gitea-runner/act_runner /usr/local/bin/act_runner
+    
+    log_info "act_runner installé ✓"
+}
 
-echo ""
-
-# Étape 2: Configuration Clever Cloud
-log "📋 Étape 2: Configuration Clever Cloud..."
-
-echo "Pour configurer Clever Cloud, vous avez besoin de:"
-echo "1. Token d'API Clever Cloud"
-echo "2. Secret Clever Cloud"
-echo ""
-
-echo "Comment obtenir ces informations:"
-echo "1. Allez sur https://console.clever-cloud.com"
-echo "2. Cliquez sur votre profil (en haut à droite)"
-echo "3. Allez dans 'API Keys'"
-echo "4. Créez une nouvelle clé API"
-echo ""
-
-read -p "Voulez-vous configurer Clever Cloud maintenant ? (y/n): " configure_clever
-
-if [ "$configure_clever" = "y" ] || [ "$configure_clever" = "Y" ]; then
+# Configurer le runner
+configure_runner() {
+    log_info "Configuration du runner..."
+    
     echo ""
-    read -p "Entrez votre token Clever Cloud: " CLEVER_TOKEN
-    read -p "Entrez votre secret Clever Cloud: " CLEVER_SECRET
-    
-    if [ -n "$CLEVER_TOKEN" ] && [ -n "$CLEVER_SECRET" ]; then
-        # Test de connexion
-        log "🔐 Test de connexion Clever Cloud..."
-        if clever login --token "$CLEVER_TOKEN" --secret "$CLEVER_SECRET" &> /dev/null; then
-            success "Connexion Clever Cloud réussie"
-            
-            # Sauvegarde des tokens
-            echo "export CLEVER_TOKEN=\"$CLEVER_TOKEN\"" >> ~/.bashrc
-            echo "export CLEVER_SECRET=\"$CLEVER_SECRET\"" >> ~/.bashrc
-            echo "export CLEVER_TOKEN=\"$CLEVER_TOKEN\"" >> ~/.zshrc
-            echo "export CLEVER_SECRET=\"$CLEVER_SECRET\"" >> ~/.zshrc
-            
-            success "Tokens sauvegardés dans ~/.bashrc et ~/.zshrc"
-        else
-            error "Échec de la connexion Clever Cloud"
-            exit 1
-        fi
-    else
-        error "Token ou secret manquant"
-        exit 1
-    fi
-else
-    warning "Configuration Clever Cloud ignorée"
-    echo "Vous devrez configurer les variables d'environnement manuellement:"
-    echo "export CLEVER_TOKEN=\"your_token\""
-    echo "export CLEVER_SECRET=\"your_secret\""
-fi
-
-echo ""
-
-# Étape 3: Configuration Gitea
-log "📋 Étape 3: Configuration Gitea..."
-
-echo "Pour configurer Gitea, vous avez besoin de:"
-echo "1. URL de votre instance Gitea"
-echo "2. Token d'API Gitea"
-echo ""
-
-echo "Comment obtenir le token Gitea:"
-echo "1. Allez sur votre instance Gitea"
-echo "2. Cliquez sur votre profil (en haut à droite)"
-echo "3. Allez dans 'Settings' > 'Applications'"
-echo "4. Générez un nouveau token"
-echo ""
-
-read -p "Voulez-vous configurer Gitea maintenant ? (y/n): " configure_gitea
-
-if [ "$configure_gitea" = "y" ] || [ "$configure_gitea" = "Y" ]; then
+    echo "Pour configurer le runner, vous avez besoin :"
+    echo "1. D'un token d'enregistrement depuis Gitea"
+    echo "2. D'accéder à votre instance Gitea : $GITEA_URL"
     echo ""
-    read -p "Entrez l'URL de votre instance Gitea (ex: https://gitea.com): " GITEA_INSTANCE_URL
-    read -p "Entrez votre token Gitea: " GITEA_TOKEN
+    echo "Pour obtenir le token :"
+    echo "1. Allez sur $GITEA_URL/admin/actions/runners"
+    echo "2. Cliquez sur 'Create new Runner'"
+    echo "3. Copiez le token d'enregistrement"
+    echo ""
     
-    if [ -n "$GITEA_INSTANCE_URL" ] && [ -n "$GITEA_TOKEN" ]; then
-        # Test de connexion
-        log "🔐 Test de connexion Gitea..."
-        if curl -s -f "$GITEA_INSTANCE_URL/api/v1/version" > /dev/null; then
-            success "Connexion Gitea réussie"
-            
-            # Sauvegarde des tokens
-            echo "export GITEA_INSTANCE_URL=\"$GITEA_INSTANCE_URL\"" >> ~/.bashrc
-            echo "export GITEA_TOKEN=\"$GITEA_TOKEN\"" >> ~/.bashrc
-            echo "export GITEA_INSTANCE_URL=\"$GITEA_INSTANCE_URL\"" >> ~/.zshrc
-            echo "export GITEA_TOKEN=\"$GITEA_TOKEN\"" >> ~/.zshrc
-            
-            success "Configuration Gitea sauvegardée"
-        else
-            error "Impossible de se connecter à Gitea: $GITEA_INSTANCE_URL"
-            exit 1
-        fi
-    else
-        error "URL ou token Gitea manquant"
+    read -p "Entrez le token d'enregistrement : " REGISTRATION_TOKEN
+    
+    if [ -z "$REGISTRATION_TOKEN" ]; then
+        log_error "Token d'enregistrement requis"
         exit 1
     fi
-else
-    warning "Configuration Gitea ignorée"
-    echo "Vous devrez configurer les variables d'environnement manuellement:"
-    echo "export GITEA_INSTANCE_URL=\"https://gitea.com\""
-    echo "export GITEA_TOKEN=\"your_token\""
-fi
-
-echo ""
-
-# Étape 4: Configuration des secrets
-log "📋 Étape 4: Configuration des secrets Gitea..."
-
-echo "Pour que les workflows fonctionnent, vous devez configurer ces secrets dans Gitea:"
-echo ""
-echo "1. Allez sur https://gitea.com/Virida/devops/settings/secrets/actions"
-echo "2. Ajoutez ces secrets:"
-echo ""
-
-echo "Secrets Clever Cloud:"
-echo "- CLEVER_CLOUD_TOKEN: $CLEVER_TOKEN"
-echo "- CLEVER_CLOUD_SECRET: $CLEVER_SECRET"
-echo ""
-
-echo "Secrets Base de données:"
-echo "- CC_POSTGRESQL_ADDON_HOST: (votre host PostgreSQL)"
-echo "- CC_POSTGRESQL_ADDON_DB: (votre base de données)"
-echo "- CC_POSTGRESQL_ADDON_USER: (votre utilisateur PostgreSQL)"
-echo "- CC_POSTGRESQL_ADDON_PASSWORD: (votre mot de passe PostgreSQL)"
-echo ""
-
-echo "Secrets Applications:"
-echo "- GRAFANA_ADMIN_PASSWORD: (mot de passe Grafana)"
-echo "- JWT_SECRET: (secret JWT)"
-echo "- CC_ACME_EMAIL: (votre email)"
-echo "- CC_APP_DOMAIN: (votre domaine d'application)"
-echo ""
-
-echo "Secrets Notifications (optionnels):"
-echo "- SLACK_WEBHOOK_URL: (webhook Slack)"
-echo "- EMAIL_USERNAME: (nom d'utilisateur email)"
-echo "- EMAIL_PASSWORD: (mot de passe email)"
-echo "- RELEASE_EMAIL_LIST: (liste d'emails pour les releases)"
-echo ""
-
-read -p "Avez-vous configuré tous les secrets dans Gitea ? (y/n): " secrets_configured
-
-if [ "$secrets_configured" = "y" ] || [ "$secrets_configured" = "Y" ]; then
-    success "Secrets configurés"
-else
-    warning "N'oubliez pas de configurer les secrets dans Gitea"
-fi
-
-echo ""
-
-# Étape 5: Déploiement
-log "📋 Étape 5: Déploiement Gitea Runner..."
-
-read -p "Voulez-vous déployer Gitea Runner maintenant ? (y/n): " deploy_now
-
-if [ "$deploy_now" = "y" ] || [ "$deploy_now" = "Y" ]; then
-    log "🚀 Déploiement de Gitea Runner..."
     
-    # Charger les variables d'environnement
-    source ~/.bashrc 2>/dev/null || true
-    source ~/.zshrc 2>/dev/null || true
+    # Enregistrer le runner
+    log_info "Enregistrement du runner..."
+    act_runner register \
+        --instance "$GITEA_URL" \
+        --token "$REGISTRATION_TOKEN" \
+        --name "$RUNNER_NAME" \
+        --labels "$RUNNER_LABELS" \
+        --no-interactive
     
-    # Exécuter le script de déploiement
-    ./scripts/deploy-gitea-runner.sh
+    log_info "Runner enregistré ✓"
+}
+
+# Créer le service systemd
+create_systemd_service() {
+    log_info "Création du service systemd..."
     
-    if [ $? -eq 0 ]; then
-        success "Déploiement Gitea Runner réussi!"
+    cat > /etc/systemd/system/gitea-runner.service << EOF
+[Unit]
+Description=Gitea Runner for VIRIDA
+After=network.target docker.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/gitea-runner
+ExecStart=/usr/local/bin/act_runner daemon
+Restart=always
+RestartSec=5
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    # Recharger systemd et démarrer le service
+    systemctl daemon-reload
+    systemctl enable gitea-runner
+    systemctl start gitea-runner
+    
+    log_info "Service systemd créé et démarré ✓"
+}
+
+# Vérifier le statut
+check_status() {
+    log_info "Vérification du statut..."
+    
+    # Vérifier le service
+    if systemctl is-active --quiet gitea-runner; then
+        log_info "Service gitea-runner actif ✓"
     else
-        error "Échec du déploiement Gitea Runner"
+        log_error "Service gitea-runner inactif"
+        systemctl status gitea-runner
         exit 1
     fi
-else
-    warning "Déploiement ignoré"
-    echo "Vous pouvez déployer plus tard avec:"
-    echo "./scripts/deploy-gitea-runner.sh"
-fi
+    
+    # Vérifier les logs
+    log_info "Logs récents :"
+    journalctl -u gitea-runner --lines=10 --no-pager
+}
 
-echo ""
+# Fonction principale
+main() {
+    echo ""
+    log_info "Début de la configuration du Gitea Runner"
+    echo ""
+    
+    check_prerequisites
+    install_act_runner
+    configure_runner
+    create_systemd_service
+    check_status
+    
+    echo ""
+    log_info "Configuration terminée avec succès ! 🎉"
+    echo ""
+    echo "Le runner est maintenant configuré et actif."
+    echo "Vous pouvez vérifier son statut avec :"
+    echo "  systemctl status gitea-runner"
+    echo ""
+    echo "Pour voir les logs :"
+    echo "  journalctl -u gitea-runner -f"
+    echo ""
+    echo "Le runner apparaîtra dans Gitea sous le nom : $RUNNER_NAME"
+    echo "URL Gitea : $GITEA_URL"
+    echo ""
+}
 
-# Étape 6: Test des workflows
-log "📋 Étape 6: Test des workflows..."
-
-echo "Pour tester les workflows Gitea Actions:"
-echo "1. Allez sur https://gitea.com/Virida/devops/actions"
-echo "2. Créez une branche de test:"
-echo "   git checkout -b test-gitea-runner"
-echo "   git push origin test-gitea-runner"
-echo "3. Créez une pull request vers 'staging'"
-echo "4. Vérifiez que les workflows se déclenchent"
-echo ""
-
-# Résumé
-log "📋 Résumé de la configuration:"
-echo ""
-echo "✅ Prérequis vérifiés"
-echo "✅ Clever Cloud configuré"
-echo "✅ Gitea configuré"
-echo "✅ Secrets documentés"
-echo "✅ Déploiement prêt"
-echo ""
-
-success "🎉 Configuration Gitea Runner terminée!"
-echo ""
-echo "Prochaines étapes:"
-echo "1. Configurez les secrets dans Gitea"
-echo "2. Déployez Gitea Runner"
-echo "3. Testez les workflows"
-echo "4. Profitez de votre pipeline CI/CD révolutionnaire!"
-echo ""
-echo "Documentation complète:"
-echo "- GITEA-RUNNER-SETUP.md"
-echo "- REVOLUTIONARY-CI-CD.md"
-echo "- CI-CD-SUMMARY.md"
+# Exécuter le script
+main "$@"

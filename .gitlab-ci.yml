@@ -1,0 +1,503 @@
+# 🦊 VIRIDA GitLab CI/CD Pipeline
+# Configuration complète pour GitLab CI/CD
+
+# ========================================
+# CONFIGURATION GLOBALE
+# ========================================
+stages:
+  - validate
+  - test
+  - build
+  - security
+  - deploy-staging
+  - test-staging
+  - deploy-production
+  - test-production
+  - monitor
+
+# Variables d'environnement globales
+variables:
+  NODE_VERSION: "18"
+  PYTHON_VERSION: "3.11"
+  GO_VERSION: "1.21"
+  DOCKER_BUILDKIT: 1
+  COMPOSE_DOCKER_CLI_BUILD: 1
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: "/certs"
+
+# Cache global
+cache:
+  key: "$CI_COMMIT_REF_SLUG"
+  paths:
+    - node_modules/
+    - .npm/
+    - .cache/pip/
+    - .cache/go/
+
+# ========================================
+# ÉTAPE 1: VALIDATION
+# ========================================
+validate:code:
+  stage: validate
+  image: alpine/git:latest
+  script:
+    - echo "🔍 Validating code structure..."
+    - find . -name "*.py" -exec python -m py_compile {} \;
+    - find . -name "*.js" -exec node -c {} \;
+    - echo "✅ Code validation passed"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+validate:yaml:
+  stage: validate
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache yamllint
+  script:
+    - echo "🔍 Validating YAML files..."
+    - yamllint .gitlab-ci.yml
+    - find . -name "*.yml" -o -name "*.yaml" | xargs yamllint
+    - echo "✅ YAML validation passed"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+# ========================================
+# ÉTAPE 2: TESTS
+# ========================================
+test:frontend:
+  stage: test
+  image: node:18-alpine
+  before_script:
+    - cd apps/frontend-3d
+    - npm ci --cache .npm
+  script:
+    - echo "🧪 Running Frontend 3D tests..."
+    - npm run test:ci
+    - npm run lint
+    - npm run build
+    - echo "✅ Frontend tests passed"
+  artifacts:
+    reports:
+      junit: apps/frontend-3d/test-results.xml
+    paths:
+      - apps/frontend-3d/dist/
+    expire_in: 1 hour
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+test:ai-ml:
+  stage: test
+  image: python:3.11-alpine
+  before_script:
+    - cd apps/ai-ml
+    - pip install -r requirements.txt
+  script:
+    - echo "🧪 Running AI/ML tests..."
+    - python -m pytest tests/ -v --cov=app --cov-report=xml
+    - python -m flake8 app/
+    - python -m black --check app/
+    - echo "✅ AI/ML tests passed"
+  artifacts:
+    reports:
+      junit: apps/ai-ml/test-results.xml
+      coverage_report:
+        coverage_format: cobertura
+        path: apps/ai-ml/coverage.xml
+    expire_in: 1 hour
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+test:go:
+  stage: test
+  image: golang:1.21-alpine
+  before_script:
+    - cd apps/gitea-drone-ci
+    - go mod download
+  script:
+    - echo "🧪 Running Go tests..."
+    - go test -v ./...
+    - go fmt ./...
+    - go vet ./...
+    - echo "✅ Go tests passed"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+# ========================================
+# ÉTAPE 3: BUILD
+# ========================================
+build:frontend:
+  stage: build
+  image: node:18-alpine
+  before_script:
+    - cd apps/frontend-3d
+    - npm ci --cache .npm
+  script:
+    - echo "🏗️ Building Frontend 3D..."
+    - npm run build:production
+    - tar -czf frontend-3d.tar.gz dist/
+    - echo "✅ Frontend build completed"
+  artifacts:
+    paths:
+      - apps/frontend-3d/frontend-3d.tar.gz
+      - apps/frontend-3d/dist/
+    expire_in: 1 day
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "staging"
+    - if: $CI_COMMIT_TAG
+
+build:ai-ml:
+  stage: build
+  image: python:3.11-alpine
+  before_script:
+    - cd apps/ai-ml
+    - pip install -r requirements.txt
+  script:
+    - echo "🏗️ Building AI/ML application..."
+    - python -m pip install --upgrade pip
+    - pip install gunicorn
+    - tar -czf ai-ml.tar.gz app/ requirements.txt wsgi.py
+    - echo "✅ AI/ML build completed"
+  artifacts:
+    paths:
+      - apps/ai-ml/ai-ml.tar.gz
+    expire_in: 1 day
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "staging"
+    - if: $CI_COMMIT_TAG
+
+build:go:
+  stage: build
+  image: golang:1.21-alpine
+  before_script:
+    - cd apps/gitea-drone-ci
+    - go mod download
+  script:
+    - echo "🏗️ Building Go application..."
+    - CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
+    - tar -czf gitea-drone-ci.tar.gz main go.mod
+    - echo "✅ Go build completed"
+  artifacts:
+    paths:
+      - apps/gitea-drone-ci/gitea-drone-ci.tar.gz
+    expire_in: 1 day
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "staging"
+    - if: $CI_COMMIT_TAG
+
+# ========================================
+# ÉTAPE 4: SÉCURITÉ
+# ========================================
+security:scan:
+  stage: security
+  image: securecodewarrior/docker-security-scan:latest
+  services:
+    - docker:dind
+  script:
+    - echo "🔒 Running security scan..."
+    - docker run --rm -v /var/run/docker.sock:/var/run/docker.sock
+        -v $(pwd):/workspace
+        securecodewarrior/docker-security-scan:latest
+        /workspace
+    - echo "✅ Security scan completed"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+security:dependency-check:
+  stage: security
+  image: node:18-alpine
+  before_script:
+    - cd apps/frontend-3d
+    - npm ci --cache .npm
+  script:
+    - echo "🔒 Running dependency security check..."
+    - npm audit --audit-level moderate
+    - echo "✅ Dependency security check completed"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+# ========================================
+# ÉTAPE 5: DÉPLOIEMENT STAGING
+# ========================================
+deploy:staging:
+  stage: deploy-staging
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache curl
+  script:
+    - echo "🚀 Deploying to staging environment..."
+    
+    # Déployer Frontend 3D
+    - cd apps/frontend-3d
+    - curl -X POST "$CLEVER_DEPLOY_URL/frontend-3d-staging" \
+        -H "Authorization: Bearer $CLEVER_TOKEN" \
+        -F "archive=@frontend-3d.tar.gz"
+    
+    # Déployer AI/ML
+    - cd ../ai-ml
+    - curl -X POST "$CLEVER_DEPLOY_URL/ai-ml-staging" \
+        -H "Authorization: Bearer $CLEVER_TOKEN" \
+        -F "archive=@ai-ml.tar.gz"
+    
+    # Déployer Go app
+    - cd ../gitea-drone-ci
+    - curl -X POST "$CLEVER_DEPLOY_URL/gitea-drone-ci-staging" \
+        -H "Authorization: Bearer $CLEVER_TOKEN" \
+        -F "archive=@gitea-drone-ci.tar.gz"
+    
+    - echo "✅ Staging deployment completed"
+  environment:
+    name: staging
+    url: https://virida-staging.cleverapps.io
+  rules:
+    - if: $CI_COMMIT_BRANCH == "staging"
+
+# ========================================
+# ÉTAPE 6: TESTS STAGING
+# ========================================
+test:staging-integration:
+  stage: test-staging
+  image: curlimages/curl:latest
+  script:
+    - echo "🧪 Running staging integration tests..."
+    - sleep 60
+    
+    # Tests de santé
+    - curl -f https://virida-frontend-3d-staging.cleverapps.io/health || exit 1
+    - curl -f https://virida-ai-ml-staging.cleverapps.io/health || exit 1
+    - curl -f https://virida-gitea-drone-ci-staging.cleverapps.io/health || exit 1
+    
+    # Tests fonctionnels
+    - curl -f https://virida-frontend-3d-staging.cleverapps.io/api/status || exit 1
+    - curl -f https://virida-ai-ml-staging.cleverapps.io/api/health || exit 1
+    
+    echo "✅ All staging tests passed!"
+  rules:
+    - if: $CI_COMMIT_BRANCH == "staging"
+
+test:staging-performance:
+  stage: test-staging
+  image: curlimages/curl:latest
+  script:
+    - echo "📊 Running staging performance tests..."
+    
+    # Test de charge simple
+    - for i in {1..10}; do
+        response_time=$(curl -o /dev/null -s -w '%{time_total}' https://virida-frontend-3d-staging.cleverapps.io/)
+        echo "Request $i: ${response_time}s"
+        if [ $(echo "$response_time > 5.0" | bc -l) -eq 1 ]; then
+          echo "⚠️ Warning: High response time detected"
+        fi
+      done
+  rules:
+    - if: $CI_COMMIT_BRANCH == "staging"
+
+# ========================================
+# ÉTAPE 7: DÉPLOIEMENT PRODUCTION
+# ========================================
+deploy:production:
+  stage: deploy-production
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache curl
+  script:
+    - echo "🚀 Deploying to production environment..."
+    
+    # Déployer Frontend 3D
+    - cd apps/frontend-3d
+    - curl -X POST "$CLEVER_DEPLOY_URL/frontend-3d" \
+        -H "Authorization: Bearer $CLEVER_TOKEN" \
+        -F "archive=@frontend-3d.tar.gz"
+    
+    # Déployer AI/ML
+    - cd ../ai-ml
+    - curl -X POST "$CLEVER_DEPLOY_URL/ai-ml" \
+        -H "Authorization: Bearer $CLEVER_TOKEN" \
+        -F "archive=@ai-ml.tar.gz"
+    
+    # Déployer Go app
+    - cd ../gitea-drone-ci
+    - curl -X POST "$CLEVER_DEPLOY_URL/gitea-drone-ci" \
+        -H "Authorization: Bearer $CLEVER_TOKEN" \
+        -F "archive=@gitea-drone-ci.tar.gz"
+    
+    - echo "✅ Production deployment completed"
+  environment:
+    name: production
+    url: https://virida.cleverapps.io
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_TAG
+
+# ========================================
+# ÉTAPE 8: TESTS PRODUCTION
+# ========================================
+test:production-health:
+  stage: test-production
+  image: curlimages/curl:latest
+  script:
+    - echo "🧪 Running production health checks..."
+    - sleep 90
+    
+    # Tests de santé critiques
+    - curl -f https://virida-frontend-3d.cleverapps.io/health || exit 1
+    - curl -f https://virida-ai-ml.cleverapps.io/health || exit 1
+    - curl -f https://virida-gitea-drone-ci.cleverapps.io/health || exit 1
+    
+    # Tests fonctionnels avancés
+    - curl -f https://virida-frontend-3d.cleverapps.io/api/status || exit 1
+    - curl -f https://virida-ai-ml.cleverapps.io/api/health || exit 1
+    
+    echo "✅ All production health checks passed!"
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_TAG
+
+test:production-performance:
+  stage: test-production
+  image: curlimages/curl:latest
+  script:
+    - echo "📊 Running production performance tests..."
+    
+    # Test de charge
+    - for i in {1..20}; do
+        response_time=$(curl -o /dev/null -s -w '%{time_total}' https://virida-frontend-3d.cleverapps.io/)
+        echo "Request $i: ${response_time}s"
+        if [ $(echo "$response_time > 2.0" | bc -l) -eq 1 ]; then
+          echo "⚠️ Warning: High response time detected in production"
+        fi
+      done
+    
+    # Test de disponibilité
+    - for i in {1..5}; do
+        curl -f https://virida-frontend-3d.cleverapps.io/ || exit 1
+        curl -f https://virida-ai-ml.cleverapps.io/ || exit 1
+        curl -f https://virida-gitea-drone-ci.cleverapps.io/ || exit 1
+        sleep 10
+      done
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_TAG
+
+# ========================================
+# ÉTAPE 9: MONITORING
+# ========================================
+monitor:setup:
+  stage: monitor
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache curl
+  script:
+    - echo "📊 Setting up monitoring..."
+    
+    # Configurer les alertes
+    - curl -X POST "$MONITORING_URL/alerts" \
+        -H "Authorization: Bearer $MONITORING_TOKEN" \
+        -H "Content-Type: application/json" \
+        -d '{
+          "service": "virida-frontend-3d",
+          "url": "https://virida-frontend-3d.cleverapps.io/health",
+          "threshold": 2.0,
+          "enabled": true
+        }'
+    
+    - curl -X POST "$MONITORING_URL/alerts" \
+        -H "Authorization: Bearer $MONITORING_TOKEN" \
+        -H "Content-Type: application/json" \
+        -d '{
+          "service": "virida-ai-ml",
+          "url": "https://virida-ai-ml.cleverapps.io/health",
+          "threshold": 2.0,
+          "enabled": true
+        }'
+    
+    - echo "✅ Monitoring setup completed"
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_TAG
+
+# ========================================
+# NOTIFICATIONS
+# ========================================
+notify:success:
+  stage: monitor
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache curl
+  script:
+    - echo "📢 Sending success notification..."
+    - curl -X POST "$SLACK_WEBHOOK_URL" \
+        -H "Content-Type: application/json" \
+        -d '{
+          "text": "✅ VIRIDA deployed successfully!",
+          "attachments": [{
+            "color": "good",
+            "fields": [{
+              "title": "Environment",
+              "value": "'$CI_COMMIT_BRANCH'",
+              "short": true
+            }, {
+              "title": "Commit",
+              "value": "'$CI_COMMIT_SHA'",
+              "short": true
+            }]
+          }]
+        }'
+  rules:
+    - if: $CI_PIPELINE_STATUS == "success"
+    - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "staging"
+
+notify:failure:
+  stage: monitor
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache curl
+  script:
+    - echo "📢 Sending failure notification..."
+    - curl -X POST "$SLACK_WEBHOOK_URL" \
+        -H "Content-Type: application/json" \
+        -d '{
+          "text": "❌ VIRIDA deployment failed!",
+          "attachments": [{
+            "color": "danger",
+            "fields": [{
+              "title": "Environment",
+              "value": "'$CI_COMMIT_BRANCH'",
+              "short": true
+            }, {
+              "title": "Commit",
+              "value": "'$CI_COMMIT_SHA'",
+              "short": true
+            }]
+          }]
+        }'
+  rules:
+    - if: $CI_PIPELINE_STATUS == "failed"
+    - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "staging"
+
+# ========================================
+# SERVICES
+# ========================================
+services:
+  - name: postgres
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: virida_test
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+    ports:
+      - 5432
+
+  - name: redis
+    image: redis:7-alpine
+    ports:
+      - 6379
+
+
+

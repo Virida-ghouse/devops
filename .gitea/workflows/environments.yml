@@ -40,18 +40,18 @@ jobs:
     if: github.event.inputs.action == 'deploy'
     
     steps:
-    - name: 📥 Checkout code
+    - name:  Checkout code
       uses: actions/checkout@v3
       
     - name: 🔧 Setup environment
       run: |
-        echo "🚀 Deploying to ${{ github.event.inputs.environment }} environment..."
+        echo " Deploying to ${{ github.event.inputs.environment }} environment..."
         
-    - name: 🏗️ Build Docker images
+    - name:  Build Docker images
       run: |
         docker build -f Dockerfile.clever -t virida-${{ github.event.inputs.environment }} .
         
-    - name: 🚀 Deploy to environment
+    - name:  Deploy to environment
       run: |
         case "${{ github.event.inputs.environment }}" in
           "dev")

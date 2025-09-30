@@ -1,0 +1,107 @@
+# 🦊 GitLab Runner Dockerfile pour VIRIDA
+FROM ubuntu:22.04
+
+# Métadonnées
+LABEL maintainer="VIRIDA Team"
+LABEL description="GitLab Runner pour pipeline CI/CD VIRIDA"
+LABEL version="1.0.0"
+
+# Variables d'environnement
+ENV DEBIAN_FRONTEND=noninteractive
+ENV GITLAB_RUNNER_VERSION=16.8.0
+ENV NODE_VERSION=18
+ENV PYTHON_VERSION=3.11
+ENV GO_VERSION=1.21
+
+# Installation des dépendances système
+RUN apt-get update && apt-get install -y \
+    wget \
+    curl \
+    git \
+    unzip \
+    tar \
+    gzip \
+    ca-certificates \
+    gnupg \
+    lsb-release \
+    software-properties-common \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Installation de Docker
+RUN curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg \
+    && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null \
+    && apt-get update \
+    && apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin \
+    && rm -rf /var/lib/apt/lists/*
+
+# Installation de Node.js
+RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION}.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# Installation de Python
+RUN apt-get update && apt-get install -y \
+    python${PYTHON_VERSION} \
+    python${PYTHON_VERSION}-dev \
+    python${PYTHON_VERSION}-pip \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Installation de Go
+RUN wget https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz \
+    && tar -C /usr/local -xzf go${GO_VERSION}.linux-amd64.tar.gz \
+    && rm go${GO_VERSION}.linux-amd64.tar.gz
+
+# Configuration des variables d'environnement
+ENV PATH="/usr/local/go/bin:${PATH}"
+ENV GOROOT="/usr/local/go"
+ENV GOPATH="/go"
+
+# Installation de Clever Tools
+RUN npm install -g clever-tools
+
+# Installation de GitLab Runner
+RUN wget https://gitlab-runner-downloads.s3.amazonaws.com/v${GITLAB_RUNNER_VERSION}/deb/gitlab-runner_${GITLAB_RUNNER_VERSION}_amd64.deb \
+    && dpkg -i gitlab-runner_${GITLAB_RUNNER_VERSION}_amd64.deb \
+    && rm gitlab-runner_${GITLAB_RUNNER_VERSION}_amd64.deb
+
+# Variables d'environnement Bucket (Clever Cloud)
+ENV BUCKET_FTP_PASSWORD="Odny785DsL9LYBZc"
+ENV BUCKET_FTP_USERNAME="ua9e0425888f"
+ENV BUCKET_HOST="bucket-a9e04258-88ff-4a8b-b7b0-87aa96455684-fsbucket.services.clever-cloud.com"
+
+# Variables d'environnement PostgreSQL (Clever Cloud)
+ENV POSTGRESQL_ADDON_HOST="bjduvaldxkbwljy3uuel-postgresql.services.clever-cloud.com"
+ENV POSTGRESQL_ADDON_DB="bjduvaldxkbwljy3uuel"
+ENV POSTGRESQL_ADDON_USER="uncer3i7fyqs2zeult6r"
+ENV POSTGRESQL_ADDON_PORT="50013"
+ENV POSTGRESQL_ADDON_PASSWORD="WuobPl6Nyk9X0Z4DKF7BlxE55z2buu"
+ENV POSTGRESQL_ADDON_URI="postgresql://uncer3i7fyqs2zeult6r:WuobPl6Nyk9X0Z4DKF7BlxE55z2buu@bjduvaldxkbwljy3uuel-postgresql.services.clever-cloud.com:5432/bjduvaldxkbwljy3uuel"
+
+# Création du répertoire de travail
+WORKDIR /workspace
+
+# Création de l'utilisateur runner
+RUN useradd -m -s /bin/bash gitlab-runner \
+    && usermod -aG docker gitlab-runner \
+    && chown -R gitlab-runner:gitlab-runner /workspace
+
+# Script de démarrage
+COPY scripts/start-gitlab-runner.sh /usr/local/bin/start-gitlab-runner.sh
+RUN chmod +x /usr/local/bin/start-gitlab-runner.sh
+
+# Configuration des labels par défaut
+ENV RUNNER_LABELS="ubuntu-latest,docker,clever-cloud"
+
+# Ports exposés
+EXPOSE 8080
+
+# Utilisateur
+USER gitlab-runner
+
+# Point d'entrée
+ENTRYPOINT ["/usr/local/bin/start-gitlab-runner.sh"]
+
+
+
