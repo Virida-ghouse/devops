@@ -39,7 +39,7 @@ fi
 # Créer l'application si elle n'existe pas
 log_info "Création de l'application SonarQube..."
 if ! clever apps | grep -q "$APP_NAME"; then
-    clever create --type dockerfile "$APP_NAME" --region par
+    clever create --type docker "$APP_NAME" --region par
     log_info "Application $APP_NAME créée"
 else
     log_info "Application $APP_NAME existe déjà"

@@ -1,28 +1,21 @@
 {
-  "apps": [
+  "build": {
+    "type": "dockerfile",
+    "dockerfile_path": "Dockerfile.sonarqube"
+  },
+  "deploy": {
+    "targetPort": 9000,
+    "healthcheckPath": "/api/system/status"
+  },
+  "addons": [
     {
-      "app_id": "app_b386e974-33bd-40ea-b4c9-2d9050ce4b42",
-      "org_id": "orga_a7844a87-3356-462b-9e22-ce6c5437b0aa",
-      "deploy_url": "https://push-n3-par-clevercloud-customers.services.clever-cloud.com/app_b386e974-33bd-40ea-b4c9-2d9050ce4b42.git",
-      "git_ssh_url": "git+ssh://git@push-n3-par-clevercloud-customers.services.clever-cloud.com/app_b386e974-33bd-40ea-b4c9-2d9050ce4b42.git",
-      "name": "virida-frontend-3d",
-      "alias": "virida-frontend-3d"
-    },
-    {
-      "app_id": "app_07da61f4-c130-4425-96ab-6400ce9e0efe",
-      "org_id": "user_706f4a8c-f710-46a2-89b7-a8e457a524aa",
-      "deploy_url": "https://push-n3-par-clevercloud-customers.services.clever-cloud.com/app_07da61f4-c130-4425-96ab-6400ce9e0efe.git",
-      "git_ssh_url": "git+ssh://git@push-n3-par-clevercloud-customers.services.clever-cloud.com/app_07da61f4-c130-4425-96ab-6400ce9e0efe.git",
-      "name": "virida-gitea-runner",
-      "alias": "virida-gitea-runner"
-    },
-    {
-      "app_id": "app_b4f7cce0-aab9-4b70-98d7-98fd33829006",
-      "org_id": "orga_a7844a87-3356-462b-9e22-ce6c5437b0aa",
-      "deploy_url": "https://push-n3-par-clevercloud-customers.services.clever-cloud.com/app_b4f7cce0-aab9-4b70-98d7-98fd33829006.git",
-      "git_ssh_url": "git+ssh://git@push-n3-par-clevercloud-customers.services.clever-cloud.com/app_b4f7cce0-aab9-4b70-98d7-98fd33829006.git",
-      "name": "virida-gitea",
-      "alias": "virida-gitea"
+      "id": "postgresql-addon",
+      "plan": "dev"
     }
-  ]
+  ],
+  "environment": {
+    "SONAR_WEB_PORT": "9000",
+    "SONAR_WEB_CONTEXT": "/",
+    "SONAR_ES_BOOTSTRAP_CHECKS_DISABLE": "true"
+  }
 }
