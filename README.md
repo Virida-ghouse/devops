@@ -1,201 +1,126 @@
-# 🚀 VIRIDA - Infrastructure DevOps Complète
+# 🚀 VIRIDA - CI/CD avec Gitea Actions
+
+**Plateforme IoT/IA avec infrastructure DevOps moderne**
 
 ## 📋 Vue d'Ensemble
 
-VIRIDA est une plateforme complète de gestion de données IoT avec intelligence artificielle, conteneurisée et déployée sur Clever Cloud.
+VIRIDA est une plateforme complète de développement IoT/IA avec une infrastructure DevOps automatisée basée sur **Gitea Actions** et déployée sur **Clever Cloud**.
 
-### 🏗️ Architecture
+## 🏗️ Architecture
 
-**Approche : Mono-repo avec Modules**
 ```
-virida/
-├── 🎨 frontend/          # Interfaces utilisateur
-├── ⚡ backend/           # Services backend
-├── 🤖 ai-ml/            # Intelligence artificielle
-├── 🌐 iot/              # Internet des objets
-├── 🏗️ infrastructure/   # DevOps et déploiement
-└── 📚 docs/             # Documentation
+VIRIDA/
+├── .gitea/workflows/     # Workflows Gitea Actions
+├── apps/                 # Applications
+│   ├── frontend-3d/      # Interface 3D (Node.js)
+│   ├── ai-ml/           # Intelligence Artificielle (Python)
+│   └── gitea-drone-ci/  # Services Go
+├── scripts/             # Scripts de déploiement
+└── docs/               # Documentation
 ```
 
 ## 🚀 Démarrage Rapide
 
-### 1. Installation
+### 1. **Upload du Code**
 ```bash
-# Cloner le projet
-git clone <repository-url>
-cd VIRIDA
-
-# Installer les dépendances
-make install
-
-# Démarrage rapide développement
-make quick-dev
+# Afficher les instructions d'upload
+./scripts/upload-to-gitea.sh
 ```
 
-### 2. Commandes Principales
+### 2. **Configuration du Runner**
 ```bash
-# Développement
-make dev              # Déployer l'environnement de développement
-make dev-logs         # Voir les logs
-make dev-status       # Statut des services
-
-# Staging
-make staging          # Déployer en staging
-make staging-logs     # Voir les logs staging
-
-# Production
-make prod             # Déployer en production
-make prod-logs        # Voir les logs production
-
-# Maintenance
-make clean            # Nettoyer les ressources
-make status           # Statut de tous les environnements
+# Configuration complète
+./scripts/configure-gitea-complete.sh
 ```
 
-## 🏢 Organisations Gitea
-
-| Organisation | Description | Équipes |
-|--------------|-------------|---------|
-| **virida-frontend** | Interface utilisateur | 3d-visualizer, dashboard, mobile |
-| **virida-backend** | Services backend | api-gateway, auth, user, business |
-| **virida-ai-ml** | Intelligence artificielle | prediction, eve, models |
-| **virida-iot** | Internet des objets | sensor, mqtt, device |
-| **virida-infrastructure** | DevOps | docker, k8s, monitoring, ci-cd |
-
-## 🐳 Services Docker
-
-### Frontend
-- **3D Visualizer** : Interface 3D (React + Three.js)
-- **Dashboard** : Tableaux de bord utilisateur
-
-### Backend
-- **API Gateway** : Point d'entrée API
-- **Auth Service** : Authentification et autorisation
-
-### AI/ML
-- **Prediction Engine** : Moteur de prédiction IA
-- **Eve Assistant** : Assistant intelligent
-
-### IoT
-- **Sensor Collector** : Collecte de données capteurs
-- **MQTT Broker** : Communication IoT
-
-## 🌍 Environnements
-
-### 🚀 Développement
-- **Ports** : 3000-9000
-- **Hot-reload** : Activé
-- **Logs** : Détaillés
-- **Base de données** : PostgreSQL local
-
-### 🎭 Staging
-- **Images** : Tag `:staging`
-- **Ressources** : Limitées
-- **Monitoring** : Activé
-- **Tests** : Automatisés
-
-### 🏭 Production
-- **Images** : Tag `:latest`
-- **Réplicas** : Haute disponibilité
-- **Sécurité** : Renforcée
-- **Monitoring** : Complet
-
-## 📊 Monitoring
-
-- **Prometheus** : http://localhost:9090
-- **Grafana** : http://localhost:3002
-- **Logs** : `make logs`
-
-## 🔧 Configuration
-
-### Variables d'Environnement
+### 3. **Test du Pipeline**
 ```bash
-# Copier les fichiers d'exemple
-cp infrastructure/docker/env.dev.example .env.dev
-cp infrastructure/docker/env.staging.example .env.staging
-cp infrastructure/docker/env.prod.example .env.prod
-
-# Éditer selon vos besoins
-nano .env.dev
+# Tester la configuration
+./scripts/test-pipeline-gitea.sh
 ```
 
-### Secrets Gitea
-```bash
-# Générer les secrets
-./get-clever-cloud-token.sh
+## 🔧 Pipeline CI/CD
 
-# Configurer dans Gitea
-# Voir GUIDE-CONFIGURATION-SECRETS.md
-```
+### **9 Stages Automatisés**
+1. **validate** - Validation du code et YAML
+2. **test** - Tests unitaires (Frontend, AI/ML, Go)
+3. **build** - Construction des applications
+4. **security** - Scan de sécurité (Trivy)
+5. **deploy-staging** - Déploiement staging
+6. **test-staging** - Tests d'intégration
+7. **deploy-production** - Déploiement production
+8. **test-production** - Tests de production
+9. **monitor** - Monitoring et alertes
 
-## 🧪 Tests
+### **Applications Supportées**
+- **Frontend 3D** : Node.js 18 + React + Three.js
+- **AI/ML** : Python 3.11 + Flask + Gunicorn
+- **Go Services** : Go 1.21 + PostgreSQL
 
-```bash
-# Tests unitaires
-make test
+## 📊 Fonctionnalités
 
-# Linting
-make lint
+### ✅ **CI/CD Automatisé**
+- Déploiements automatiques vers Clever Cloud
+- Tests unitaires et d'intégration
+- Scan de sécurité intégré
+- Rollback automatique
 
-# Scans de sécurité
-make security-scan
-```
+### ✅ **Monitoring**
+- Health checks automatiques
+- Logs centralisés
+- Alertes Slack (optionnel)
+- Métriques de performance
+
+### ✅ **Sécurité**
+- Scan des vulnérabilités (Trivy)
+- Gestion des secrets chiffrés
+- Isolation des tâches
+- Audit trail complet
+
+## 🛠️ Scripts Disponibles
+
+| Script | Description |
+|--------|-------------|
+| `upload-to-gitea.sh` | Instructions d'upload vers Gitea |
+| `configure-gitea-complete.sh` | Configuration complète |
+| `setup-gitea-runner.sh` | Installation du runner |
+| `start-gitea-runner.sh` | Démarrage du runner |
+| `test-pipeline-gitea.sh` | Test du pipeline |
+| `generate-pdf-analysis.sh` | Génération PDF d'analyse |
 
 ## 📚 Documentation
 
-- **Architecture** : `docs/architecture/`
-- **API** : `docs/api/`
-- **Déploiement** : `docs/deployment/`
-- **CI/CD** : `README-CI-CD.md`
+- **ANALYSE-COMPARATIVE-CI-CD-VIRIDA.md** - Analyse détaillée des solutions CI/CD
+- **RESUME-EXECUTIF-CI-CD-VIRIDA.md** - Résumé exécutif pour présentation
+- **GUIDE-DEPLOIEMENT-FINAL.md** - Guide de déploiement complet
+- **GUIDE-UPLOAD-MANUEL.md** - Instructions d'upload manuel
+
+## 🌐 URLs
+
+- **Repository Gitea** : https://app-5d976fde-cfd7-4662-9fff-49ed6f693eee.cleverapps.io/crk_test/virida
+- **Actions** : https://app-5d976fde-cfd7-4662-9fff-49ed6f693eee.cleverapps.io/crk_test/virida/actions
+- **Settings** : https://app-5d976fde-cfd7-4662-9fff-49ed6f693eee.cleverapps.io/crk_test/virida/settings
+
+## 🎯 Prochaines Étapes
+
+1. **Uploader le code** vers Gitea
+2. **Configurer le runner** Gitea
+3. **Ajouter les secrets** (CLEVER_TOKEN, CLEVER_SECRET)
+4. **Tester le pipeline** avec un commit
 
 ## 🆘 Support
 
-### Problèmes Courants
 ```bash
-# Services ne démarrent pas
-make clean && make dev
+# Test complet
+./scripts/test-pipeline-gitea.sh
 
-# Ports occupés
-make dev-stop && make dev
+# Configuration manuelle
+./scripts/configure-gitea-runner-manual.sh
 
-# Images corrompues
-make clean && make build
+# Upload du code
+./scripts/upload-to-gitea.sh
 ```
-
-### Logs et Debug
-```bash
-# Logs détaillés
-make dev-logs
-
-# Statut des services
-make dev-status
-
-# Monitoring
-make monitor
-```
-
-## 🎯 Roadmap
-
-### ✅ Complété (DEVOPS-001)
-- [x] Architecture mono-repo avec modules
-- [x] Organisations Gitea
-- [x] Dockerfiles optimisés
-- [x] Environnements dev/staging/prod
-- [x] Scripts de déploiement
-- [x] CI/CD Gitea Actions
-
-### 🚧 En Cours (DEVOPS-002)
-- [ ] Registry Docker privé
-- [ ] Optimisation des builds
-- [ ] Scans de sécurité avancés
-
-### 📋 À Venir
-- [ ] Kubernetes et ArgoCD
-- [ ] Monitoring Prometheus-Grafana
-- [ ] Logging centralisé EFK
-- [ ] Sécurité renforcée
-- [ ] Sauvegardes automatisées
 
 ---
 
-**🏆 VIRIDA - Infrastructure DevOps Complète et Modulaire**
+**VIRIDA - Infrastructure DevOps Moderne avec Gitea Actions** 🚀
