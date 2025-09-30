@@ -84,7 +84,6 @@ VIRIDA/
 | `setup-gitea-runner.sh` | Installation du runner |
 | `start-gitea-runner.sh` | Démarrage du runner |
 | `test-pipeline-gitea.sh` | Test du pipeline |
-| `generate-pdf-analysis.sh` | Génération PDF d'analyse |
 
 ## 📚 Documentation
 
