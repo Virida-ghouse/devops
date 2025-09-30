@@ -13,8 +13,7 @@ VIRIDA/
 ├── .gitea/workflows/     # Workflows Gitea Actions
 ├── apps/                 # Applications
 │   ├── frontend-3d/      # Interface 3D (Node.js)
-│   ├── ai-ml/           # Intelligence Artificielle (Python)
-│   └── gitea-drone-ci/  # Services Go
+│   └── ai-ml/           # Intelligence Artificielle (Python)
 ├── scripts/             # Scripts de déploiement
 └── docs/               # Documentation
 ```
@@ -43,7 +42,7 @@ VIRIDA/
 
 ### **9 Stages Automatisés**
 1. **validate** - Validation du code et YAML
-2. **test** - Tests unitaires (Frontend, AI/ML, Go)
+2. **test** - Tests unitaires (Frontend, AI/ML)
 3. **build** - Construction des applications
 4. **security** - Scan de sécurité (Trivy)
 5. **deploy-staging** - Déploiement staging
@@ -55,7 +54,6 @@ VIRIDA/
 ### **Applications Supportées**
 - **Frontend 3D** : Node.js 18 + React + Three.js
 - **AI/ML** : Python 3.11 + Flask + Gunicorn
-- **Go Services** : Go 1.21 + PostgreSQL
 
 ## 📊 Fonctionnalités
 
@@ -81,7 +79,7 @@ VIRIDA/
 
 | Script | Description |
 |--------|-------------|
-| `upload-to-gitea.sh` | Instructions d'upload vers Gitea |
+| `configure-gitea-runner-manual.sh` | Configuration manuelle du runner |
 | `configure-gitea-complete.sh` | Configuration complète |
 | `setup-gitea-runner.sh` | Installation du runner |
 | `start-gitea-runner.sh` | Démarrage du runner |
@@ -90,10 +88,8 @@ VIRIDA/
 
 ## 📚 Documentation
 
-- **ANALYSE-COMPARATIVE-CI-CD-VIRIDA.md** - Analyse détaillée des solutions CI/CD
-- **RESUME-EXECUTIF-CI-CD-VIRIDA.md** - Résumé exécutif pour présentation
-- **GUIDE-DEPLOIEMENT-FINAL.md** - Guide de déploiement complet
-- **GUIDE-UPLOAD-MANUEL.md** - Instructions d'upload manuel
+- **DEVOPS-VIRIDA.md** - Documentation DevOps complète
+- **RAPPORT-PROJET-VIRIDA.md** - Rapport de projet détaillé
 
 ## 🌐 URLs
 
@@ -116,9 +112,6 @@ VIRIDA/
 
 # Configuration manuelle
 ./scripts/configure-gitea-runner-manual.sh
-
-# Upload du code
-./scripts/upload-to-gitea.sh
 ```
 
 ---
