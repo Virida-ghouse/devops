@@ -13,7 +13,7 @@
 │  Organisation: orga_a7844a87-3356-462b-9e22-ce6c5437b0aa  │
 ├─────────────────────────────────────────────────────────────┤
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │   Frontend  │  │    AI/ML    │  │ GitLab      │        │
+│  │   Frontend  │  │    AI/ML    │  │ Gitea       │        │
 │  │     3D      │  │   Services  │  │ Runner      │        │
 │  │  (Node.js)  │  │  (Python)   │  │ (Ubuntu)    │        │
 │  └─────────────┘  └─────────────┘  └─────────────┘        │
@@ -25,10 +25,10 @@
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Pipeline CI/CD GitLab
+### Pipeline CI/CD Gitea Actions
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    GITLAB CI/CD                            │
+│                    GITEA ACTIONS CI/CD                     │
 ├─────────────────────────────────────────────────────────────┤
 │  Code → Validate → Test → Build → Security → Deploy       │
 │                                                             │
@@ -66,7 +66,7 @@ EXPOSE 8000
 CMD ["gunicorn", "--bind", "0.0.0.0:8000", "wsgi:application"]
 ```
 
-#### GitLab Runner
+#### Gitea Runner
 ```dockerfile
 FROM ubuntu:22.04
 # Installation complète des outils DevOps
@@ -79,7 +79,7 @@ FROM ubuntu:22.04
 #### Applications
 - **Frontend 3D** : `virida-frontend-3d`
 - **AI/ML** : `virida-ai-ml`
-- **GitLab Runner** : `virida-gitlab-runner`
+- **Gitea Runner** : `virida-gitea-runner`
 
 #### Services
 - **PostgreSQL** : Base de données principale
@@ -124,7 +124,7 @@ validate:code:
   - Structure du code
 
 validate:yaml:
-  - Validation .gitlab-ci.yml
+  - Validation workflows Gitea Actions
   - Vérification Dockerfiles
   - Configuration Clever Cloud
 ```
@@ -318,19 +318,19 @@ notify:success/failure:
 ## 🛠️ Outils DevOps
 
 ### CI/CD
-- **GitLab CI** : Pipeline principal
-- **GitLab Runner** : Exécution jobs
+- **Gitea Actions** : Pipeline principal
+- **Gitea Runner** : Exécution jobs
 - **Docker** : Containerisation
 - **Clever Cloud** : Déploiement
 
 ### Monitoring
-- **GitLab Monitoring** : Métriques intégrées
+- **Gitea Monitoring** : Métriques intégrées
 - **Clever Cloud** : Monitoring infrastructure
 - **Slack** : Notifications équipe
 - **Custom Dashboards** : Métriques métier
 
 ### Sécurité
-- **GitLab Security** : Scan intégré
+- **Gitea Security** : Scan intégré
 - **Docker Security** : Scan images
 - **Clever Cloud** : Sécurité infrastructure
 - **Secrets Management** : Variables sécurisées
@@ -369,7 +369,7 @@ notify:success/failure:
 ## 🎯 Roadmap DevOps
 
 ### Q4 2025
-- ✅ Migration GitLab CI/CD
+- ✅ Configuration Gitea Actions CI/CD
 - ✅ Configuration monitoring
 - ✅ Automatisation déploiement
 - ✅ Documentation complète
