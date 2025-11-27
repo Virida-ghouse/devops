@@ -5,8 +5,17 @@
 
 echo "🚀 Starting Gitea on Clever Cloud..."
 
+# Debug: Show available PostgreSQL variables
+echo "🔍 Debug - PostgreSQL variables:"
+echo "  - POSTGRESQL_ADDON_URI: ${POSTGRESQL_ADDON_URI:+SET}"
+echo "  - POSTGRESQL_ADDON_HOST: ${POSTGRESQL_ADDON_HOST:+SET}"
+echo "  - POSTGRESQL_ADDON_PORT: ${POSTGRESQL_ADDON_PORT:+SET}"
+echo "  - POSTGRESQL_ADDON_DB: ${POSTGRESQL_ADDON_DB:+SET}"
+echo "  - POSTGRESQL_ADDON_USER: ${POSTGRESQL_ADDON_USER:+SET}"
+
 # Use POSTGRESQL_ADDON_URI if available (contains all connection info with proper SSL)
 if [ -n "$POSTGRESQL_ADDON_URI" ]; then
+  echo "✅ Using POSTGRESQL_ADDON_URI for database configuration"
   # Parse URI: postgresql://user:password@host:port/database
   # Extract components from URI
   DB_URI="$POSTGRESQL_ADDON_URI"
@@ -36,6 +45,7 @@ if [ -n "$POSTGRESQL_ADDON_URI" ]; then
     fi
   fi
 else
+  echo "⚠️  POSTGRESQL_ADDON_URI not found, using individual variables"
   # Fallback: Extract host and port from POSTGRESQL_ADDON_HOST if it contains a port
   if [ -n "$POSTGRESQL_ADDON_HOST" ]; then
     # Check if HOST contains a port (format: host:port)
