@@ -73,7 +73,11 @@ fi
 export GITEA__database__DB_TYPE="${GITEA__database__DB_TYPE:-postgres}"
 
 # Force SSL for PostgreSQL on Clever Cloud (required for Clever Cloud PostgreSQL)
+# Gitea uses different SSL mode values: disable, require, verify-ca, verify-full
 export GITEA__database__SSL_MODE="require"
+
+# Also set SSLMODE for PostgreSQL driver (some versions need this)
+export GITEA__database__SSLMODE="require"
 
 # Log configuration (without sensitive data)
 echo "📊 Gitea Database Configuration:"
