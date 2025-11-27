@@ -9,6 +9,7 @@ LABEL description="Gitea pour VIRIDA avec base de données PostgreSQL"
 ENV USER_UID=1000
 ENV USER_GID=1000
 ENV GITEA__database__DB_TYPE=postgres
+# Note: HOST, PORT, USER, PASSWD, NAME doivent être définis via variables d'environnement Clever Cloud
 ENV GITEA__server__DOMAIN=gitea.cleverapps.io
 ENV GITEA__server__ROOT_URL=https://gitea.cleverapps.io
 ENV GITEA__server__SSH_DOMAIN=gitea.cleverapps.io
