@@ -1,0 +1,22 @@
+{
+  "build": {
+    "type": "dockerfile",
+    "dockerfile_path": "Dockerfile.sonarqube"
+  },
+  "deploy": {
+    "targetPort": 9000,
+    "healthcheckPath": "/api/system/status"
+  },
+  "addons": [
+    {
+      "id": "postgresql-addon",
+      "plan": "dev"
+    }
+  ],
+  "environment": {
+    "SONAR_WEB_PORT": "9000",
+    "SONAR_WEB_CONTEXT": "/",
+    "SONAR_ES_BOOTSTRAP_CHECKS_DISABLE": "true"
+  }
+}
+

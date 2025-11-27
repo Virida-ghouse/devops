@@ -1,0 +1,57 @@
+# Fichiers de configuration avec secrets
+clevercloud.json
+clevercloud-gitea.json
+clevercloud-gitea-runner.json
+clevercloud-simple.json
+clevercloud-sonarqube.json
+
+# Variables d'environnement
+.env
+.env.local
+.env.*.local
+*.env
+
+# Logs
+logs/
+*.log
+
+# Fichiers sensibles
+**/secrets/
+**/*secret*
+**/*key*
+**/*password*
+**/*token*
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# Node modules (déjà dans les sous-dossiers mais au cas où)
+node_modules/
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Build
+dist/
+build/
+*.tgz
+
+# Database
+*.db
+*.sqlite
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+

@@ -43,7 +43,7 @@ Le projet VIRIDA a été entièrement migré d'une architecture Gitea + Drone ve
 
 #### Variables Bucket (Clever Cloud)
 ```bash
-BUCKET_FTP_PASSWORD=Odny785DsL9LYBZc
+BUCKET_FTP_PASSWORD=***
 BUCKET_FTP_USERNAME=ua9e0425888f
 BUCKET_HOST=bucket-a9e04258-88ff-4a8b-b7b0-87aa96455684-fsbucket.services.clever-cloud.com
 ```
@@ -54,8 +54,8 @@ POSTGRESQL_ADDON_HOST=bjduvaldxkbwljy3uuel-postgresql.services.clever-cloud.com
 POSTGRESQL_ADDON_DB=bjduvaldxkbwljy3uuel
 POSTGRESQL_ADDON_USER=uncer3i7fyqs2zeult6r
 POSTGRESQL_ADDON_PORT=50013
-POSTGRESQL_ADDON_PASSWORD=WuobPl6Nyk9X0Z4DKF7BlxE55z2buu
-POSTGRESQL_ADDON_URI=postgresql://uncer3i7fyqs2zeult6r:WuobPl6Nyk9X0Z4DKF7BlxE55z2buu@bjduvaldxkbwljy3uuel-postgresql.services.clever-cloud.com:5432/bjduvaldxkbwljy3uuel
+POSTGRESQL_ADDON_PASSWORD=***
+POSTGRESQL_ADDON_URI=postgresql://uncer3i7fyqs2zeult6r:***@bjduvaldxkbwljy3uuel-postgresql.services.clever-cloud.com:5432/bjduvaldxkbwljy3uuel
 ```
 
 #### Variables Gitea (Configuration)
