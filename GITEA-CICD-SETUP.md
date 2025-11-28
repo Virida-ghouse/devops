@@ -1,4 +1,4 @@
-# 🚀 Guide de Configuration CI/CD Gitea Actions pour VIRIDA
+    # 🚀 Guide de Configuration CI/CD Gitea Actions pour VIRIDA
 
 ## 📋 Vue d'ensemble
 
@@ -27,8 +27,9 @@ Ce guide explique comment configurer Gitea Actions pour activer la CI/CD sur vot
 ```bash
 # 1. Télécharger act_runner
 cd /tmp
-wget https://gitea.com/gitea/act_runner/releases/download/v0.3.0/act_runner-0.3.0-linux-amd64.tar.gz
-tar -xzf act_runner-0.3.0-linux-amd64.tar.gz
+wget https://gitea.com/gitea/act_runner/releases/download/v0.2.13/act_runner-0.2.13-linux-amd64
+chmod +x act_runner-0.2.13-linux-amd64
+sudo mv act_runner-0.2.13-linux-amd64 /usr/local/bin/act_runner
 sudo mv act_runner /usr/local/bin/
 chmod +x /usr/local/bin/act_runner
 

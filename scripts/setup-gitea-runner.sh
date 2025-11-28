@@ -59,7 +59,7 @@ install_act_runner() {
     cd /opt/gitea-runner
     
     # Télécharger act_runner
-    ACT_RUNNER_VERSION="0.3.0"
+    ACT_RUNNER_VERSION="0.2.13"
     ACT_RUNNER_URL="https://gitea.com/gitea/act_runner/releases/download/v${ACT_RUNNER_VERSION}/act_runner-${ACT_RUNNER_VERSION}-linux-amd64.tar.gz"
     
     log_info "Téléchargement d'act_runner v${ACT_RUNNER_VERSION}..."

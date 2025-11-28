@@ -3,7 +3,7 @@ FROM ubuntu:22.04
 
 # Variables d'environnement
 ENV DEBIAN_FRONTEND=noninteractive
-ENV ACT_RUNNER_VERSION=0.3.0
+ENV ACT_RUNNER_VERSION=0.2.13
 ENV GITEA_INSTANCE_URL=""
 ENV RUNNER_NAME="virida-runner"
 ENV RUNNER_LABELS="ubuntu-latest:docker://node:18,ubuntu-latest:docker://python:3.11,ubuntu-latest:docker://golang:1.21"
