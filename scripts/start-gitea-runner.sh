@@ -9,7 +9,7 @@ echo "🚀 Démarrage du Gitea Runner VIRIDA"
 echo "===================================="
 
 # Variables
-GITEA_URL="https://app-5d976fde-cfd7-4662-9fff-49ed6f693eee.cleverapps.io"
+GITEA_URL="https://gitea.virida.org"
 RUNNER_NAME="virida-runner-$(hostname)"
 RUNNER_LABELS="ubuntu-latest:docker://node:18,ubuntu-latest:docker://python:3.11,ubuntu-latest:docker://golang:1.21"
 
