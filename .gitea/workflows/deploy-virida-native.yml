@@ -2,15 +2,15 @@ name: Deploy VIRIDA Native Applications
 
 on:
   push:
-    branches: [main]
+    branches: [ devops_crk ]
   pull_request:
-    branches: [main]
+    branches: [ devops_crk ]
   workflow_dispatch:
 
 jobs:
   build-and-deploy-virida-app:
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/devops_crk'
     env:
       NODE_VERSION: '18'
     steps:
@@ -48,7 +48,7 @@ jobs:
 
   deploy-frontend-3d:
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/devops_crk'
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -63,7 +63,7 @@ jobs:
 
   deploy-backend-api:
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/devops_crk'
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -99,7 +99,7 @@ jobs:
 
   deploy-ai-ml:
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/devops_crk'
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -114,7 +114,7 @@ jobs:
 
   deploy-monitoring:
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/devops_crk'
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -138,7 +138,7 @@ jobs:
   health-check:
     runs-on: ubuntu-latest
     needs: [build-and-deploy-virida-app, deploy-frontend-3d, deploy-backend-api, deploy-ai-ml, deploy-monitoring]
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/devops_crk'
     steps:
       - name: Health Check Frontend
         run: |

@@ -2,9 +2,9 @@ name: VIRIDA CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, staging, develop ]
+    branches: [ devops_crk ]
   pull_request:
-    branches: [ main, staging ]
+    branches: [ devops_crk ]
   workflow_dispatch:
 
 jobs:
@@ -107,7 +107,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Deploy CI/CD to Staging
     needs: [sonarqube]
-    if: github.ref == 'refs/heads/staging'
+    if: github.ref == 'refs/heads/devops_crk'
     environment: staging
     steps:
       - name: Checkout code
@@ -141,7 +141,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Deploy CI/CD to Production
     needs: [sonarqube]
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/devops_crk'
     environment: production
     steps:
       - name: Checkout code

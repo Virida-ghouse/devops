@@ -1,0 +1,47 @@
+name: 🧪 Simple Test Workflow
+
+on:
+  push:
+    branches: [ devops_crk ]
+  pull_request:
+    branches: [ devops_crk ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    name: Simple Test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Test - List files
+        run: |
+          echo "📁 Current directory: $(pwd)"
+          echo "📂 Files in root:"
+          ls -la
+          echo ""
+          echo "✅ Test workflow is working!"
+      
+      - name: Test - Check Node.js
+        run: |
+          if command -v node &> /dev/null; then
+            echo "✅ Node.js is available: $(node --version)"
+          else
+            echo "ℹ️ Node.js not available (this is normal if not installed)"
+          fi
+      
+      - name: Test - Check Python
+        run: |
+          if command -v python3 &> /dev/null; then
+            echo "✅ Python is available: $(python3 --version)"
+          else
+            echo "ℹ️ Python not available (this is normal if not installed)"
+          fi
+      
+      - name: Test - Check Git
+        run: |
+          echo "✅ Git is available: $(git --version)"
+          echo "📝 Current branch: $(git rev-parse --abbrev-ref HEAD)"
+          echo "📝 Current commit: $(git rev-parse HEAD)"
+
