@@ -2,7 +2,7 @@ name: PR Validation & Review
 
 on:
   pull_request:
-    branches: [ main, staging ]
+    branches: [ devops_crk ]
   workflow_dispatch:
 
 jobs:
@@ -18,14 +18,14 @@ jobs:
       - name: Validate PR
         run: |
           echo "Validating Pull Request..."
-          echo "PR Title: ${{ github.event.pull_request.title }}"
-          echo "PR Author: ${{ github.event.pull_request.user.login }}"
-          echo "Base branch: ${{ github.event.pull_request.base.ref }}"
-          echo "Head branch: ${{ github.event.pull_request.head.ref }}"
+          echo "PR Title: ${{ gitea.event.pull_request.title || 'N/A' }}"
+          echo "PR Author: ${{ gitea.event.pull_request.user.login || 'N/A' }}"
+          echo "Base branch: ${{ gitea.event.pull_request.base.ref || 'devops_crk' }}"
+          echo "Head branch: ${{ gitea.event.pull_request.head.ref || 'N/A' }}"
           
       - name: Check PR Size
         run: |
-          CHANGED_FILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }} | wc -l)
+          CHANGED_FILES=$(git diff --name-only ${{ gitea.event.pull_request.base.sha || 'HEAD~1' }} ${{ gitea.event.pull_request.head.sha || 'HEAD' }} | wc -l)
           echo "Number of changed files: $CHANGED_FILES"
           if [ $CHANGED_FILES -gt 50 ]; then
             echo "⚠️ Warning: This PR has more than 50 changed files"

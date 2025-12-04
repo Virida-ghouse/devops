@@ -112,7 +112,7 @@ jobs:
       - name: SonarQube Scan
         uses: SonarSource/sonarqube-scan-action@master
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
@@ -120,7 +120,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Deploy CI/CD to Staging
     needs: [sonarqube]
-    if: github.ref == 'refs/heads/devops_crk'
+    if: gitea.ref == 'refs/heads/devops_crk'
     environment: staging
     steps:
       - name: Checkout code
@@ -154,7 +154,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Deploy CI/CD to Production
     needs: [sonarqube]
-    if: github.ref == 'refs/heads/devops_crk'
+    if: gitea.ref == 'refs/heads/devops_crk'
     environment: production
     steps:
       - name: Checkout code

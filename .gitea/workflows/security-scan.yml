@@ -77,9 +77,9 @@ jobs:
         cat > security-results/security-summary.json << EOF
         {
           "scan_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-          "workflow_run": "${{ github.run_id }}",
-          "commit": "${{ github.sha }}",
-          "branch": "${{ github.ref_name }}",
+          "workflow_run": "${{ gitea.run_id || 'N/A' }}",
+          "commit": "${{ gitea.sha }}",
+          "branch": "${{ gitea.ref_name || 'devops_crk' }}",
           "scans_performed": [
             "nodejs_dependencies_npm_audit",
             "dockerfiles_hadolint"
@@ -100,9 +100,9 @@ jobs:
         echo "🔒 Security Scan Summary"
         echo "========================"
         echo "📅 Date: $(date)"
-        echo "🔄 Workflow: ${{ github.run_id }}"
-        echo "📝 Commit: ${{ github.sha }}"
-        echo "🌿 Branch: ${{ github.ref_name }}"
+        echo "🔄 Workflow: ${{ gitea.run_id || 'N/A' }}"
+        echo "📝 Commit: ${{ gitea.sha }}"
+        echo "🌿 Branch: ${{ gitea.ref_name || 'devops_crk' }}"
         echo ""
         echo "📊 Scans performed:"
         echo "  ✅ Node.js dependencies (npm audit) - virida_app"
