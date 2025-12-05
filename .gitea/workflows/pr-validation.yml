@@ -28,7 +28,7 @@ jobs:
           CHANGED_FILES=$(git diff --name-only ${{ gitea.event.pull_request.base.sha || 'HEAD~1' }} ${{ gitea.event.pull_request.head.sha || 'HEAD' }} | wc -l)
           echo "Number of changed files: $CHANGED_FILES"
           if [ $CHANGED_FILES -gt 50 ]; then
-            echo "⚠️ Warning: This PR has more than 50 changed files"
+            echo "[WARN] Warning: This PR has more than 50 changed files"
             exit 1
           fi
 

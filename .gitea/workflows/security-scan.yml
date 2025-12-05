@@ -13,7 +13,7 @@ on:
 jobs:
   security-scan:
     runs-on: ubuntu-latest
-    name: 🔒 Security Scan VIRIDA
+    name: Security Scan VIRIDA
     
     steps:
     - name: Checkout code
@@ -97,17 +97,17 @@ jobs:
         
     - name: Security summary
       run: |
-        echo "🔒 Security Scan Summary"
+        echo "Security Scan Summary"
         echo "========================"
-        echo "📅 Date: $(date)"
-        echo "🔄 Workflow: ${{ gitea.run_id || 'N/A' }}"
-        echo "📝 Commit: ${{ gitea.sha }}"
-        echo "🌿 Branch: ${{ gitea.ref_name || 'devops_crk' }}"
+        echo "Date: $(date)"
+        echo "Workflow: ${{ gitea.run_id || 'N/A' }}"
+        echo "Commit: ${{ gitea.sha }}"
+        echo "Branch: ${{ gitea.ref_name || 'devops_crk' }}"
         echo ""
-        echo "📊 Scans performed:"
-        echo "  ✅ Node.js dependencies (npm audit) - virida_app"
-        echo "  ✅ Node.js dependencies (npm audit) - virida_api"
-        echo "  ✅ Dockerfiles (hadolint)"
+        echo "Scans performed:"
+        echo "  [OK] Node.js dependencies (npm audit) - virida_app"
+        echo "  [OK] Node.js dependencies (npm audit) - virida_api"
+        echo "  [OK] Dockerfiles (hadolint)"
         echo ""
-        echo "📁 Results uploaded as artifact: security-scan-results"
-        echo "🔄 Next scan: Daily at 2:00 AM UTC"
+        echo "Results uploaded as artifact: security-scan-results"
+        echo "Next scan: Daily at 2:00 AM UTC"

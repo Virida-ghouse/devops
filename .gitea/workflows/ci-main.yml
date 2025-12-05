@@ -1,4 +1,4 @@
-name: 🚀 VIRIDA CI - Main Pipeline
+name: VIRIDA CI - Main Pipeline
 
 on:
   push:
@@ -16,13 +16,13 @@ jobs:
   # ========================================
   validate:
     runs-on: ubuntu-latest
-    name: ✅ Validate Code
+    name: Validate Code
     
     steps:
-    - name: 📥 Checkout code
+    - name: Checkout code
       uses: actions/checkout@v3
       
-    - name: 🔍 Validate YAML files
+    - name: Validate YAML files
       run: |
         echo "Validating YAML configuration files..."
         ERROR_COUNT=0
@@ -31,64 +31,64 @@ jobs:
             echo "Validating $file"
             # Vérifier que le fichier contient "name:" quelque part dans les premières lignes
             if head -5 "$file" | grep -q "name:"; then
-              echo "  ✅ $file is valid"
+              echo "  [OK] $file is valid"
             else
-              echo "  ❌ Invalid workflow: $file (missing 'name:' field)"
+              echo "  [ERROR] Invalid workflow: $file (missing 'name:' field)"
               ERROR_COUNT=$((ERROR_COUNT + 1))
             fi
           fi
         done
         if [ $ERROR_COUNT -gt 0 ]; then
-          echo "❌ Found $ERROR_COUNT invalid workflow file(s)"
+          echo "[ERROR] Found $ERROR_COUNT invalid workflow file(s)"
           exit 1
         fi
-        echo "✅ All workflow YAML files are valid"
+        echo "[OK] All workflow YAML files are valid"
         
-    - name: 🔍 Validate JSON files
+    - name: Validate JSON files
       run: |
         echo "Validating JSON configuration files..."
         find . -maxdepth 1 -name "*.json" -type f | while read file; do
           echo "Validating $file"
-          python3 -m json.tool "$file" > /dev/null || { echo "❌ Invalid JSON: $file"; exit 1; }
+          python3 -m json.tool "$file" > /dev/null || { echo "[ERROR] Invalid JSON: $file"; exit 1; }
         done
-        echo "✅ All JSON files are valid"
+        echo "[OK] All JSON files are valid"
 
   # ========================================
   # TESTS FRONTEND (virida_app)
   # ========================================
   test-frontend:
     runs-on: ubuntu-latest
-    name: 🧪 Test Frontend (virida_app)
+    name: Test Frontend (virida_app)
     
     steps:
-    - name: 📥 Checkout code
+    - name: Checkout code
       uses: actions/checkout@v3
       
-    - name: 🔧 Setup Node.js
+    - name: Setup Node.js
       uses: actions/setup-node@v3
       with:
         node-version: ${{ env.NODE_VERSION }}
         cache: 'npm'
         cache-dependency-path: virida_app/package-lock.json
         
-    - name: 📦 Install dependencies
+    - name: Install dependencies
       working-directory: virida_app
       run: npm ci
       
-    - name: 🔍 Lint code
+    - name: Lint code
       working-directory: virida_app
       run: npm run lint || echo "⚠️ Linting completed with warnings"
       
-    - name: 🧪 Run tests (if available)
+    - name: Run tests (if available)
       working-directory: virida_app
       run: |
         if npm run | grep -q "test"; then
-          npm test || echo "⚠️ Tests completed with warnings"
+          npm test || echo "[WARN] Tests completed with warnings"
         else
-          echo "ℹ️ No test script found, skipping tests"
+          echo "[INFO] No test script found, skipping tests"
         fi
       
-    - name: 🏗️ Build
+    - name: Build
       working-directory: virida_app
       run: npm run build
 
@@ -97,24 +97,24 @@ jobs:
   # ========================================
   test-backend:
     runs-on: ubuntu-latest
-    name: 🧪 Test Backend (virida_api)
+    name: Test Backend (virida_api)
     
     steps:
-    - name: 📥 Checkout code
+    - name: Checkout code
       uses: actions/checkout@v3
       
-    - name: 🔧 Setup Node.js
+    - name: Setup Node.js
       uses: actions/setup-node@v3
       with:
         node-version: ${{ env.NODE_VERSION }}
         cache: 'npm'
         cache-dependency-path: virida_api/package-lock.json
         
-    - name: 📦 Install dependencies
+    - name: Install dependencies
       working-directory: virida_api
       run: npm ci
       
-    - name: 🔍 Lint code
+    - name: Lint code
       working-directory: virida_api
       run: npm run lint || echo "⚠️ Linting completed with warnings"
       
@@ -122,101 +122,101 @@ jobs:
       working-directory: virida_api
       run: npm test || echo "⚠️ Tests completed with warnings"
       
-    - name: 🏗️ Build test
+    - name: Build test
       working-directory: virida_api
-      run: npm run build || echo "ℹ️ Build test completed"
+        run: npm run build || echo "[INFO] Build test completed"
 
   # ========================================
   # SECURITY SCAN
   # ========================================
   security:
     runs-on: ubuntu-latest
-    name: 🔒 Security Scan
+    name: Security Scan
     needs: [validate]
     
     steps:
-    - name: 📥 Checkout code
+    - name: Checkout code
       uses: actions/checkout@v3
       
-    - name: 🔧 Setup Node.js
+    - name: Setup Node.js
       uses: actions/setup-node@v3
       with:
         node-version: ${{ env.NODE_VERSION }}
         
-    - name: 🔒 Scan Frontend dependencies
+    - name: Scan Frontend dependencies
       working-directory: virida_app
       run: |
-        npm audit --audit-level=moderate || echo "⚠️ Security vulnerabilities found in virida_app"
+        npm audit --audit-level=moderate || echo "[WARN] Security vulnerabilities found in virida_app"
         
-    - name: 🔒 Scan Backend dependencies
+    - name: Scan Backend dependencies
       working-directory: virida_api
       run: |
-        npm audit --audit-level=moderate || echo "⚠️ Security vulnerabilities found in virida_api"
+        npm audit --audit-level=moderate || echo "[WARN] Security vulnerabilities found in virida_api"
 
   # ========================================
   # BUILD
   # ========================================
   build:
     runs-on: ubuntu-latest
-    name: 🏗️ Build All
+    name: Build All
     needs: [test-frontend, test-backend]
     
     steps:
-    - name: 📥 Checkout code
+    - name: Checkout code
       uses: actions/checkout@v3
       
-    - name: 🔧 Setup Node.js
+    - name: Setup Node.js
       uses: actions/setup-node@v3
       with:
         node-version: ${{ env.NODE_VERSION }}
         
-    - name: 🏗️ Build Frontend
+    - name: Build Frontend
       working-directory: virida_app
       run: |
         npm ci
         npm run build
-        echo "✅ Frontend build successful"
+        echo "[OK] Frontend build successful"
         
-    - name: 🏗️ Build Backend
+    - name: Build Backend
       working-directory: virida_api
       run: |
         npm ci
-        npm run build || echo "ℹ️ Backend build completed"
-        echo "✅ Backend build successful"
+        npm run build || echo "[INFO] Backend build completed"
+        echo "[OK] Backend build successful"
 
   # ========================================
   # SUMMARY
   # ========================================
   ci-summary:
     runs-on: ubuntu-latest
-    name: 📊 CI Summary
+    name: CI Summary
     needs: [validate, test-frontend, test-backend, security, build]
     if: always()
     
     steps:
-    - name: 📊 CI Summary
+    - name: CI Summary
       run: |
-        echo "🚀 VIRIDA CI Pipeline Summary"
+        echo "VIRIDA CI Pipeline Summary"
         echo "=============================="
-        echo "📅 Date: $(date)"
-        echo "🌿 Branch: ${{ gitea.ref_name || 'devops_crk' }}"
-        echo "📝 Commit: ${{ gitea.sha }}"
+        echo "Date: $(date)"
+        echo "Branch: ${{ gitea.ref_name || 'devops_crk' }}"
+        echo "Commit: ${{ gitea.sha }}"
         echo ""
-        echo "📋 Jobs Status:"
-        echo "  ✅ Validate: ${{ needs.validate.result }}"
-        echo "  ✅ Test Frontend: ${{ needs.test-frontend.result }}"
-        echo "  ✅ Test Backend: ${{ needs.test-backend.result }}"
-        echo "  ✅ Security: ${{ needs.security.result }}"
-        echo "  ✅ Build: ${{ needs.build.result }}"
+        echo "Jobs Status:"
+        echo "  [OK] Validate: ${{ needs.validate.result }}"
+        echo "  [OK] Test Frontend: ${{ needs.test-frontend.result }}"
+        echo "  [OK] Test Backend: ${{ needs.test-backend.result }}"
+        echo "  [OK] Security: ${{ needs.security.result }}"
+        echo "  [OK] Build: ${{ needs.build.result }}"
         echo ""
         if [[ "${{ needs.validate.result }}" == "success" && \
               "${{ needs.test-frontend.result }}" == "success" && \
               "${{ needs.test-backend.result }}" == "success" && \
               "${{ needs.build.result }}" == "success" ]]; then
-          echo "🎉 All CI checks passed!"
+          echo "[SUCCESS] All CI checks passed!"
           exit 0
         else
-          echo "⚠️ Some CI checks had issues"
+          echo "[WARN] Some CI checks had issues"
           exit 0
         fi
 
