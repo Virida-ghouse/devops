@@ -26,6 +26,7 @@ jobs:
       run: |
         echo "Validating YAML configuration files..."
         ERROR_COUNT=0
+        # Valider seulement les workflows (pas actions.yml qui a un format différent)
         for file in .gitea/workflows/*.yml; do
           if [ -f "$file" ]; then
             echo "Validating $file"
