@@ -77,7 +77,7 @@ jobs:
       
     - name: Lint code
       working-directory: virida_app
-      run: npm run lint || echo "⚠️ Linting completed with warnings"
+      run: npm run lint || echo "[WARN] Linting completed with warnings"
       
     - name: Run tests (if available)
       working-directory: virida_app
@@ -116,11 +116,11 @@ jobs:
       
     - name: Lint code
       working-directory: virida_api
-      run: npm run lint || echo "⚠️ Linting completed with warnings"
+      run: npm run lint || echo "[WARN] Linting completed with warnings"
       
-    - name: 🧪 Run tests
+    - name: Run tests
       working-directory: virida_api
-      run: npm test || echo "⚠️ Tests completed with warnings"
+      run: npm test || echo "[WARN] Tests completed with warnings"
       
     - name: Build test
       working-directory: virida_api
