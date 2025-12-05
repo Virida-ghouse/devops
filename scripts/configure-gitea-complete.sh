@@ -5,7 +5,7 @@
 
 set -e
 
-echo "🚀 Configuration Complète Gitea Actions VIRIDA"
+echo "Configuration Complete Gitea Actions VIRIDA"
 echo "=============================================="
 
 # Variables
@@ -41,10 +41,10 @@ echo ""
 log_info "Configuration complète de Gitea Actions pour VIRIDA"
 echo ""
 
-echo "📋 Étapes de configuration :"
+echo "Etapes de configuration :"
 echo ""
 
-echo "1. 📝 Vérifier que le code est uploadé :"
+echo "1. Verifier que le code est uploade :"
 echo "   - Allez sur: $REPO_URL"
 echo "   - Vérifiez que les fichiers .gitea/workflows/ sont présents"
 echo "   - Vérifiez que les applications apps/ sont présentes"
@@ -81,7 +81,7 @@ echo "     - CLEVER_SECRET: Votre secret Clever Cloud"
 echo "     - SLACK_WEBHOOK_URL: (optionnel) Webhook Slack"
 echo ""
 
-echo "4. 🧪 Tester le Pipeline :"
+echo "4. Tester le Pipeline :"
 echo "   a) Faire un commit de test :"
 echo "      echo '# Test pipeline' >> README.md"
 echo "      git add README.md"
@@ -94,7 +94,7 @@ echo "      - Vérifiez que le workflow se déclenche"
 echo "      - Consultez les logs d'exécution"
 echo ""
 
-echo "5. 📊 Vérifier les Déploiements :"
+echo "5. Verifier les Deploiements :"
 echo "   - Vérifiez que les applications Clever Cloud sont déployées"
 echo "   - Testez les endpoints de santé"
 echo "   - Consultez les logs de déploiement"
