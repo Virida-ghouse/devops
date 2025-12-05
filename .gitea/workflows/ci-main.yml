@@ -25,12 +25,23 @@ jobs:
     - name: 🔍 Validate YAML files
       run: |
         echo "Validating YAML configuration files..."
-        find .gitea/workflows -name "*.yml" -type f 2>/dev/null | while read file; do
-          echo "Validating $file"
+        ERROR_COUNT=0
+        for file in .gitea/workflows/*.yml; do
           if [ -f "$file" ]; then
-            head -1 "$file" | grep -q "name:" || { echo "❌ Invalid workflow: $file"; exit 1; }
+            echo "Validating $file"
+            # Vérifier que le fichier contient "name:" quelque part dans les premières lignes
+            if head -5 "$file" | grep -q "name:"; then
+              echo "  ✅ $file is valid"
+            else
+              echo "  ❌ Invalid workflow: $file (missing 'name:' field)"
+              ERROR_COUNT=$((ERROR_COUNT + 1))
+            fi
           fi
         done
+        if [ $ERROR_COUNT -gt 0 ]; then
+          echo "❌ Found $ERROR_COUNT invalid workflow file(s)"
+          exit 1
+        fi
         echo "✅ All workflow YAML files are valid"
         
     - name: 🔍 Validate JSON files
