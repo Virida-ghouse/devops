@@ -419,3 +419,4 @@ sudo systemctl status gitea-runner
 **🎉 Félicitations ! Tu as maintenant une CI/CD complète avec Gitea Actions !**
 
 
+
