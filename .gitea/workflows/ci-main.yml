@@ -15,7 +15,7 @@ jobs:
   # VALIDATION
   # ========================================
   validate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest:host
     name: Validate Code
     
     steps:
@@ -58,7 +58,7 @@ jobs:
   # TESTS FRONTEND (virida_app)
   # ========================================
   test-frontend:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest:host
     name: Test Frontend (virida_app)
     
     steps:
@@ -97,7 +97,7 @@ jobs:
   # TESTS BACKEND (virida_api)
   # ========================================
   test-backend:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest:host
     name: Test Backend (virida_api)
     
     steps:
@@ -131,7 +131,7 @@ jobs:
   # SECURITY SCAN
   # ========================================
   security:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest:host
     name: Security Scan
     needs: [validate]
     
@@ -158,7 +158,7 @@ jobs:
   # BUILD
   # ========================================
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest:host
     name: Build All
     needs: [test-frontend, test-backend]
     
@@ -189,7 +189,7 @@ jobs:
   # SUMMARY
   # ========================================
   ci-summary:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest:host
     name: CI Summary
     needs: [validate, test-frontend, test-backend, security, build]
     if: always()
