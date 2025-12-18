@@ -26,18 +26,16 @@ RUN apt-get update && apt-get install -y \
 RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
     && apt-get install -y nodejs
 
-# Installer Python 3.11
-RUN add-apt-repository ppa:deadsnakes/ppa \
-    && apt-get update \
-    && apt-get install -y python3.11 python3.11-pip python3.11-venv \
-    && ln -s /usr/bin/python3.11 /usr/bin/python3 \
-    && ln -s /usr/bin/python3.11 /usr/bin/python
+# Installer Python (utilisé pour le healthcheck et certains jobs)
+# Note: sur Ubuntu, le paquet s'appelle python3-pip (pas python3.11-pip)
+RUN apt-get update \
+    && apt-get install -y python3 python3-pip python3-venv python-is-python3 \
+    && rm -rf /var/lib/apt/lists/*
 
-# Installer Go 1.21
-RUN wget https://go.dev/dl/go1.21.0.linux-amd64.tar.gz \
-    && tar -C /usr/local -xzf go1.21.0.linux-amd64.tar.gz \
-    && rm go1.21.0.linux-amd64.tar.gz
-ENV PATH="/usr/local/go/bin:${PATH}"
+# Installer Go (utile pour certains workflows)
+RUN apt-get update \
+    && apt-get install -y golang-go \
+    && rm -rf /var/lib/apt/lists/*
 
 # Installer Clever Cloud CLI
 RUN curl -fsSL https://clever-tools.clever-cloud.com/releases/2.7.0/clever-tools-linux.tar.gz | tar -xz \
@@ -63,8 +61,9 @@ RUN wget https://gitea.com/gitea/act_runner/releases/download/v${ACT_RUNNER_VERS
 COPY scripts/start-gitea-runner.sh /usr/local/bin/start-gitea-runner.sh
 RUN chmod +x /usr/local/bin/start-gitea-runner.sh
 
-# Créer le répertoire de configuration
-RUN mkdir -p /opt/gitea-runner/.runner
+# Health server (Clever Cloud expects an open port)
+COPY scripts/health_server.py /usr/local/bin/health_server.py
+RUN chmod +x /usr/local/bin/health_server.py
 
 # Exposer le port (si nécessaire)
 EXPOSE 8080
@@ -74,48 +73,56 @@ COPY <<EOF /usr/local/bin/entrypoint.sh
 #!/bin/bash
 set -e
 
-echo "🚀 Démarrage du Gitea Runner VIRIDA"
-echo "===================================="
+echo "Starting Gitea Runner VIRIDA"
+echo "============================"
 
 # Vérifier les variables d'environnement
 if [ -z "\$GITEA_INSTANCE_URL" ]; then
-    echo "❌ GITEA_INSTANCE_URL n'est pas définie"
+    echo "[ERROR] GITEA_INSTANCE_URL is not set"
     exit 1
 fi
 
 if [ -z "\$RUNNER_NAME" ]; then
-    echo "❌ RUNNER_NAME n'est pas définie"
+    echo "[ERROR] RUNNER_NAME is not set"
     exit 1
 fi
 
-echo "Instance Gitea: \$GITEA_INSTANCE_URL"
-echo "Nom du runner: \$RUNNER_NAME"
+echo "Gitea instance: \$GITEA_INSTANCE_URL"
+echo "Runner name: \$RUNNER_NAME"
 echo "Labels: \$RUNNER_LABELS"
 echo ""
 
-# Démarrer Docker si nécessaire
-if ! docker info &> /dev/null; then
-    echo "Démarrage de Docker..."
-    service docker start
-    sleep 5
+# Start a tiny HTTP server so Clever Cloud healthchecks pass (binds to $PORT, defaults to 8080)
+python3 /usr/local/bin/health_server.py &
+
+# Docker-in-Docker is often not available on PaaS platforms like Clever Cloud.
+# Do not fail hard if Docker daemon isn't accessible.
+if command -v docker >/dev/null 2>&1; then
+    if ! docker info >/dev/null 2>&1; then
+        echo "[WARN] Docker daemon not available. Continuing without Docker executor."
+    fi
+else
+    echo "[WARN] Docker CLI not installed. Continuing without Docker executor."
 fi
 
-# Vérifier si le runner est déjà enregistré
+# Enregistrer le runner si nécessaire
 if [ ! -f "/opt/gitea-runner/.runner" ]; then
-    echo "⚠️  Le runner n'est pas enregistré"
-    echo "Vous devez d'abord l'enregistrer avec :"
-    echo "act_runner register --instance \$GITEA_INSTANCE_URL --token YOUR_TOKEN --name \$RUNNER_NAME --labels \"\$RUNNER_LABELS\""
-    echo ""
-    echo "Pour obtenir le token :"
-    echo "1. Allez sur \$GITEA_INSTANCE_URL/admin/actions/runners"
-    echo "2. Créez un nouveau runner"
-    echo "3. Copiez le token d'enregistrement"
-    echo ""
-    echo "En attendant, le runner va essayer de se connecter..."
+    if [ -z "\$GITEA_TOKEN" ]; then
+        echo "[ERROR] Runner is not registered and GITEA_TOKEN is not set"
+        echo "        Set GITEA_TOKEN in Clever Cloud environment variables"
+        exit 1
+    fi
+
+    echo "Registering runner with Gitea..."
+    act_runner register \
+        --instance "\$GITEA_INSTANCE_URL" \
+        --token "\$GITEA_TOKEN" \
+        --name "\$RUNNER_NAME" \
+        --labels "\$RUNNER_LABELS" \
+        --no-interactive
 fi
 
-# Démarrer act_runner
-echo "Démarrage d'act_runner..."
+echo "Starting act_runner daemon..."
 exec act_runner daemon
 EOF
 
