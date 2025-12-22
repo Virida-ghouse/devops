@@ -49,12 +49,11 @@ WORKDIR /opt/gitea-runner
 RUN chown -R runner:runner /opt/gitea-runner
 
 # Cache busting: Updated 2025-12-22 to fix act_runner download with fallback
-ARG CACHE_BUST=2025-12-22-v2
+ARG CACHE_BUST=2025-12-22-v3
 
 # Télécharger et installer act_runner
-# Try specific version first, fallback to latest if it fails
-RUN (wget -q https://gitea.com/gitea/act_runner/releases/download/v${ACT_RUNNER_VERSION}/act_runner-${ACT_RUNNER_VERSION}-linux-amd64.tar.gz -O act_runner.tar.gz || \
-     wget -q https://gitea.com/gitea/act_runner/releases/latest/download/act_runner-linux-amd64.tar.gz -O act_runner.tar.gz) \
+# Use latest release directly (more reliable than specific versions)
+RUN wget -q https://gitea.com/gitea/act_runner/releases/latest/download/act_runner-linux-amd64.tar.gz -O act_runner.tar.gz \
     && tar -xzf act_runner.tar.gz \
     && chmod +x act_runner \
     && mv act_runner /usr/local/bin/ \
