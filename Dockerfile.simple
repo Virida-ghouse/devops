@@ -18,11 +18,13 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Installation de Gitea Runner
-RUN wget https://gitea.com/gitea/act_runner/releases/download/v${GITEA_RUNNER_VERSION}/act_runner-${GITEA_RUNNER_VERSION}-linux-amd64.tar.gz \
-    && tar -xzf act_runner-${GITEA_RUNNER_VERSION}-linux-amd64.tar.gz \
+# Try specific version first, fallback to latest if it fails
+RUN (wget -q https://gitea.com/gitea/act_runner/releases/download/v${GITEA_RUNNER_VERSION}/act_runner-${GITEA_RUNNER_VERSION}-linux-amd64.tar.gz -O act_runner.tar.gz || \
+     wget -q https://gitea.com/gitea/act_runner/releases/latest/download/act_runner-linux-amd64.tar.gz -O act_runner.tar.gz) \
+    && tar -xzf act_runner.tar.gz \
     && mv act_runner /usr/local/bin/ \
     && chmod +x /usr/local/bin/act_runner \
-    && rm act_runner-${GITEA_RUNNER_VERSION}-linux-amd64.tar.gz
+    && rm -f act_runner.tar.gz
 
 # Création du répertoire de travail
 WORKDIR /workspace
