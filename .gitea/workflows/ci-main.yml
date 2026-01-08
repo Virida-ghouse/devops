@@ -15,7 +15,7 @@ jobs:
   # VALIDATION
   # ========================================
   validate:
-    runs-on: ubuntu-latest
+    runs-on: virida-host
     name: Validate Code
     
     steps:
@@ -58,7 +58,7 @@ jobs:
   # TESTS FRONTEND (virida_app)
   # ========================================
   test-frontend:
-    runs-on: ubuntu-latest
+    runs-on: virida-host
     name: Test Frontend (virida_app)
     
     steps:
@@ -97,7 +97,7 @@ jobs:
   # TESTS BACKEND (virida_api)
   # ========================================
   test-backend:
-    runs-on: ubuntu-latest
+    runs-on: virida-host
     name: Test Backend (virida_api)
     
     steps:
