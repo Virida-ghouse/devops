@@ -37,10 +37,7 @@ RUN apt-get update \
     && apt-get install -y golang-go \
     && rm -rf /var/lib/apt/lists/*
 
-# Installer Clever Cloud CLI
-RUN curl -fsSL https://clever-tools.clever-cloud.com/releases/2.7.0/clever-tools-linux.tar.gz | tar -xz \
-    && mv clever /usr/local/bin/ \
-    && chmod +x /usr/local/bin/clever
+# Note: Clever Tools CLI is not required inside the runner container.
 
 # Créer un utilisateur pour le runner
 RUN useradd -m -s /bin/bash runner \
