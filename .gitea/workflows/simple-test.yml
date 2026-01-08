@@ -9,7 +9,7 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest:host
+    runs-on: ubuntu-latest
     name: Simple Test
     steps:
       - name: Checkout code
