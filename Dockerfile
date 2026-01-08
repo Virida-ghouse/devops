@@ -23,9 +23,13 @@ RUN apt-get update && apt-get install -y \
     software-properties-common \
     && rm -rf /var/lib/apt/lists/*
 
-# Installer Node.js 18
-RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
-    && apt-get install -y nodejs
+# Installer Node.js 20 (JS-based Actions like actions/checkout/setup-node run with node16/node20 runtimes)
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && node --version \
+    && npm --version \
+    && ln -sf "$(command -v node)" /usr/local/bin/node16 \
+    && ln -sf "$(command -v node)" /usr/local/bin/node20
 
 # Installer Python (utilisé pour le healthcheck et certains jobs)
 # Note: sur Ubuntu, le paquet s'appelle python3-pip (pas python3.11-pip)

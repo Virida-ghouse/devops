@@ -9,6 +9,19 @@ echo "============================"
 
 cd /opt/gitea-runner
 
+# Ensure common system paths are present. JS-based actions (checkout, upload-artifact, setup-node, ...)
+# require `node` to be resolvable via PATH.
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH:-}"
+
+echo "PATH: $PATH"
+if command -v node >/dev/null 2>&1; then
+    echo "Node: $(command -v node) ($(node --version 2>/dev/null || true))"
+else
+    echo "[ERROR] Node.js is required to run JS-based Actions, but 'node' was not found in PATH."
+    echo "        Fix: ensure Node.js is installed in the runner image and available in PATH."
+    exit 1
+fi
+
 has_docker() {
     command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1
 }

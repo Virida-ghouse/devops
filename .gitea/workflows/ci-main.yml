@@ -125,7 +125,7 @@ jobs:
       
     - name: Build test
       working-directory: virida_api
-        run: npm run build || echo "[INFO] Build test completed"
+      run: npm run build || echo "[INFO] Build test completed"
 
   # ========================================
   # SECURITY SCAN
