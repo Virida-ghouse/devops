@@ -1,0 +1,39 @@
+# Configuration Gitea Actions pour VIRIDA
+# Ce fichier configure les actions disponibles
+
+actions:
+  # Actions de base
+  - name: checkout
+    version: v3
+    url: https://github.com/actions/checkout
+    
+  - name: setup-node
+    version: v3
+    url: https://github.com/actions/setup-node
+    
+  - name: setup-python
+    version: v4
+    url: https://github.com/actions/setup-python
+    
+  - name: upload-artifact
+    version: v3
+    url: https://github.com/actions/upload-artifact
+    
+  - name: download-artifact
+    version: v3
+    url: https://github.com/actions/download-artifact
+    
+  # Actions de sécurité
+  - name: trivy-action
+    version: master
+    url: https://github.com/aquasecurity/trivy-action
+    
+  # Actions de déploiement
+  - name: gh-pages
+    version: v3
+    url: https://github.com/peaceiris/actions-gh-pages
+    
+  # Actions de test
+  - name: codecov
+    version: v3
+    url: https://github.com/codecov/codecov-action
