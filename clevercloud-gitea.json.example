@@ -18,7 +18,8 @@
     "GITEA__server__DOMAIN": "your-domain.com",
     "GITEA__server__ROOT_URL": "https://your-domain.com",
     "GITEA__server__SSH_DOMAIN": "your-domain.com",
-    "GITEA__server__SSH_PORT": "22",
+    "GITEA__server__DISABLE_SSH": "true",
+    "GITEA__server__START_SSH_SERVER": "false",
     "GITEA__server__HTTP_PORT": "3000",
     "GITEA__server__PROTOCOL": "https",
     "GITEA__security__INSTALL_LOCK": "true",
@@ -31,7 +32,7 @@
     "GITEA__repository__LOCAL_WIKI_PATH": "/data/gitea/tmp/local-wiki",
     "GITEA__repository__UPLOAD_PATH": "/data/gitea/tmp/uploads",
     "GITEA__server__LFS_START_SERVER": "true",
-    "GITEA__server__LFS_CONTENT_PATH": "/data/git/lfs",
+    "GITEA__lfs__PATH": "/data/git/lfs",
     "GITEA__server__LFS_JWT_SECRET": "your-lfs-jwt-secret",
     "GITEA__security__SECRET_KEY": "your-secret-key",
     "GITEA__security__INTERNAL_TOKEN": "your-internal-token",
@@ -67,7 +68,7 @@
     "GITEA__cron__CHECK_REPO_STATS__RUN_AT_START": "true",
     "GITEA__cron__CHECK_REPO_STATS__SCHEDULE": "@every 24h",
     "GITEA__actions__ENABLED": "true",
-    "GITEA__actions__DEFAULT_ACTIONS_URL": "https://gitea.com",
+    "GITEA__actions__DEFAULT_ACTIONS_URL": "github",
     "GITEA__actions__ENABLE_ACTIONS": "true"
   }
 }

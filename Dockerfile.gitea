@@ -13,7 +13,10 @@ ENV GITEA__database__DB_TYPE=postgres
 ENV GITEA__server__DOMAIN=gitea.cleverapps.io
 ENV GITEA__server__ROOT_URL=https://gitea.cleverapps.io
 ENV GITEA__server__SSH_DOMAIN=gitea.cleverapps.io
-ENV GITEA__server__SSH_PORT=22
+# Clever Cloud does not expose port 22 for containers. Disable Gitea's built-in SSH server
+# to avoid "Bind to port 22 ... Address in use" crashes.
+ENV GITEA__server__DISABLE_SSH=true
+ENV GITEA__server__START_SSH_SERVER=false
 ENV GITEA__server__HTTP_PORT=3000
 ENV GITEA__server__PROTOCOL=https
 ENV GITEA__security__INSTALL_LOCK=true
@@ -26,11 +29,12 @@ ENV GITEA__repository__LOCAL_LOCAL_COPY_PATH=/data/gitea/tmp/local-repo
 ENV GITEA__repository__LOCAL_WIKI_PATH=/data/gitea/tmp/local-wiki
 ENV GITEA__repository__UPLOAD_PATH=/data/gitea/tmp/uploads
 ENV GITEA__server__LFS_START_SERVER=true
-ENV GITEA__server__LFS_CONTENT_PATH=/data/git/lfs
+# Gitea >=1.19 deprecates [server] LFS_CONTENT_PATH in favor of [lfs] PATH
+ENV GITEA__lfs__PATH=/data/git/lfs
 ENV GITEA__cron__ENABLED=true
 ENV GITEA__cron__RUN_AT_START=true
 ENV GITEA__actions__ENABLED=true
-ENV GITEA__actions__DEFAULT_ACTIONS_URL=https://gitea.com
+ENV GITEA__actions__DEFAULT_ACTIONS_URL=github
 ENV GITEA__actions__ENABLE_ACTIONS=true
 
 # Création des répertoires
@@ -44,8 +48,8 @@ RUN mkdir -p /data/gitea/log \
 # Permissions
 RUN chown -R git:git /data
 
-# Ports
-EXPOSE 3000 22
+# Ports (HTTP only; SSH is disabled on Clever Cloud)
+EXPOSE 3000
 
 # Volume
 VOLUME ["/data"]
