@@ -7,7 +7,8 @@ LABEL description="Gitea Runner simplifié pour VIRIDA"
 
 # Variables d'environnement
 ENV DEBIAN_FRONTEND=noninteractive
-ENV GITEA_RUNNER_VERSION=0.3.0
+ENV GITEA_RUNNER_VERSION=0.2.13
+ENV RUNNER_WORK_DIR="/tmp/act_runner/workspace"
 
 # Installation des dépendances de base
 RUN apt-get update && apt-get install -y \
@@ -18,16 +19,15 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Installation de Gitea Runner
-# Try specific version first, fallback to latest if it fails
-RUN (wget -q https://gitea.com/gitea/act_runner/releases/download/v${GITEA_RUNNER_VERSION}/act_runner-${GITEA_RUNNER_VERSION}-linux-amd64.tar.gz -O act_runner.tar.gz || \
-     wget -q https://gitea.com/gitea/act_runner/releases/latest/download/act_runner-linux-amd64.tar.gz -O act_runner.tar.gz) \
-    && tar -xzf act_runner.tar.gz \
-    && mv act_runner /usr/local/bin/ \
-    && chmod +x /usr/local/bin/act_runner \
-    && rm -f act_runner.tar.gz
+# NOTE: l'asset de release est un binaire direct (pas un .tar.gz)
+RUN set -eux; \
+    url="https://gitea.com/gitea/act_runner/releases/download/v${GITEA_RUNNER_VERSION}/act_runner-${GITEA_RUNNER_VERSION}-linux-amd64"; \
+    curl -fsSL "$url" -o /usr/local/bin/act_runner; \
+    chmod +x /usr/local/bin/act_runner; \
+    /usr/local/bin/act_runner --version || true
 
-# Création du répertoire de travail
-WORKDIR /workspace
+# Répertoire de travail (pour les fichiers du runner)
+WORKDIR /opt/gitea-runner
 
 # Script de démarrage simple
 RUN echo '#!/bin/bash\n\
@@ -35,6 +35,11 @@ echo "🚁 Démarrage Gitea Runner..."\n\
 echo "Instance: $GITEA_INSTANCE_URL"\n\
 echo "Runner: $RUNNER_NAME"\n\
 echo "Labels: $RUNNER_LABELS"\n\
+WORKDIR="${RUNNER_WORK_DIR:-/tmp/act_runner/workspace}"\n\
+echo "Workdir: $WORKDIR"\n\
+\n\
+# Créer le répertoire de travail (doit être writable)\n\
+mkdir -p "$WORKDIR"\n\
 \n\
 # Enregistrement du runner\n\
 act_runner register \\\n\
@@ -42,11 +47,11 @@ act_runner register \\\n\
   --token "$GITEA_TOKEN" \\\n\
   --name "$RUNNER_NAME" \\\n\
   --labels "$RUNNER_LABELS" \\\n\
-  --workdir "/workspace" \\\n\
+  --workdir "$WORKDIR" \\\n\
   --no-interactive\n\
 \n\
 # Démarrage du daemon\n\
-act_runner daemon --workdir "/workspace"\n\
+act_runner daemon --workdir "$WORKDIR"\n\
 ' > /start.sh && chmod +x /start.sh
 
 # Point d'entrée

@@ -8,10 +8,14 @@ set -e
 echo "🚀 Démarrage du Gitea Runner VIRIDA"
 echo "===================================="
 
-# Variables
-GITEA_URL="https://gitea.virida.org"
-RUNNER_NAME="virida-runner-$(hostname)"
-RUNNER_LABELS="ubuntu-latest:docker://node:18,ubuntu-latest:docker://python:3.11,ubuntu-latest:docker://golang:1.21"
+# Variables (peuvent être overridées via l'environnement)
+: "${GITEA_INSTANCE_URL:=https://gitea.virida.org}"
+: "${RUNNER_NAME:=virida-runner-$(hostname)}"
+: "${RUNNER_LABELS:=ubuntu-latest:docker://node:18,ubuntu-latest:docker://python:3.11,ubuntu-latest:docker://golang:1.21}"
+: "${RUNNER_WORK_DIR:=/tmp/act_runner/workspace}"
+
+# Compat (ancien nom utilisé par ce script)
+GITEA_URL="$GITEA_INSTANCE_URL"
 
 # Couleurs pour les logs
 RED='\033[0;31m'
@@ -52,8 +56,29 @@ check_config() {
     
     # Vérifier si le runner est enregistré
     if [ ! -f "/opt/gitea-runner/.runner" ]; then
-        log_error "Le runner n'est pas enregistré. Exécutez d'abord setup-gitea-runner.sh"
-        exit 1
+        log_warn "Le runner n'est pas enregistré. Tentative d'enregistrement automatique..."
+
+        if [ -z "${GITEA_TOKEN:-}" ]; then
+            log_error "Impossible d'enregistrer automatiquement: GITEA_TOKEN n'est pas défini"
+            exit 1
+        fi
+
+        mkdir -p /opt/gitea-runner
+        cd /opt/gitea-runner
+        mkdir -p "$RUNNER_WORK_DIR"
+
+        act_runner register \
+            --instance "$GITEA_URL" \
+            --token "$GITEA_TOKEN" \
+            --name "$RUNNER_NAME" \
+            --labels "$RUNNER_LABELS" \
+            --workdir "$RUNNER_WORK_DIR" \
+            --no-interactive
+
+        if [ ! -f "/opt/gitea-runner/.runner" ]; then
+            log_error "Enregistrement automatique échoué: /opt/gitea-runner/.runner introuvable"
+            exit 1
+        fi
     fi
     
     log_info "Configuration OK ✓"
@@ -64,8 +89,8 @@ check_docker() {
     log_info "Vérification de Docker..."
     
     if ! docker info &> /dev/null; then
-        log_error "Docker n'est pas accessible. Vérifiez que Docker est démarré."
-        exit 1
+        log_warn "Docker n'est pas accessible. Le runner fonctionnera en mode host (sans executor Docker)."
+        return 0
     fi
     
     log_info "Docker OK ✓"
@@ -78,16 +103,20 @@ start_daemon() {
     # Créer le répertoire de travail
     mkdir -p /opt/gitea-runner
     cd /opt/gitea-runner
+
+    # Créer le workdir pour les jobs (doit être writable)
+    mkdir -p "$RUNNER_WORK_DIR"
     
     # Démarrer act_runner
     log_info "Lancement d'act_runner daemon..."
     log_info "Runner: $RUNNER_NAME"
     log_info "Labels: $RUNNER_LABELS"
     log_info "Gitea URL: $GITEA_URL"
+    log_info "Workdir: $RUNNER_WORK_DIR"
     echo ""
     
     # Démarrer le daemon
-    act_runner daemon
+    act_runner daemon --workdir "$RUNNER_WORK_DIR"
 }
 
 # Démarrer le runner en mode interactif
@@ -97,16 +126,20 @@ start_interactive() {
     # Créer le répertoire de travail
     mkdir -p /opt/gitea-runner
     cd /opt/gitea-runner
+
+    # Créer le workdir pour les jobs (doit être writable)
+    mkdir -p "$RUNNER_WORK_DIR"
     
     # Démarrer act_runner
     log_info "Lancement d'act_runner..."
     log_info "Runner: $RUNNER_NAME"
     log_info "Labels: $RUNNER_LABELS"
     log_info "Gitea URL: $GITEA_URL"
+    log_info "Workdir: $RUNNER_WORK_DIR"
     echo ""
     
     # Démarrer en mode interactif
-    act_runner daemon --config /opt/gitea-runner/config.yaml
+    act_runner daemon --workdir "$RUNNER_WORK_DIR" --config /opt/gitea-runner/config.yaml
 }
 
 # Afficher l'aide
