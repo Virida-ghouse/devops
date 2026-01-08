@@ -69,18 +69,29 @@ jobs:
       uses: actions/setup-node@v3
       with:
         node-version: ${{ env.NODE_VERSION }}
-        cache: 'npm'
-        cache-dependency-path: virida_app/package-lock.json
+
+    - name: Check virida_app exists
+      id: check_frontend
+      run: |
+        if [ -d "virida_app" ] && [ -f "virida_app/package.json" ]; then
+          echo "exists=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "exists=false" >> "$GITHUB_OUTPUT"
+          echo "[INFO] virida_app not present in this repo checkout; skipping frontend job."
+        fi
         
     - name: Install dependencies
+      if: steps.check_frontend.outputs.exists == 'true'
       working-directory: virida_app
       run: npm ci
       
     - name: Lint code
+      if: steps.check_frontend.outputs.exists == 'true'
       working-directory: virida_app
       run: npm run lint || echo "[WARN] Linting completed with warnings"
       
     - name: Run tests (if available)
+      if: steps.check_frontend.outputs.exists == 'true'
       working-directory: virida_app
       run: |
         if npm run | grep -q "test"; then
@@ -90,6 +101,7 @@ jobs:
         fi
       
     - name: Build
+      if: steps.check_frontend.outputs.exists == 'true'
       working-directory: virida_app
       run: npm run build
 
@@ -108,22 +120,34 @@ jobs:
       uses: actions/setup-node@v3
       with:
         node-version: ${{ env.NODE_VERSION }}
-        cache: 'npm'
-        cache-dependency-path: virida_api/package-lock.json
+
+    - name: Check virida_api exists
+      id: check_backend
+      run: |
+        if [ -d "virida_api" ] && [ -f "virida_api/package.json" ]; then
+          echo "exists=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "exists=false" >> "$GITHUB_OUTPUT"
+          echo "[INFO] virida_api not present in this repo checkout; skipping backend job."
+        fi
         
     - name: Install dependencies
+      if: steps.check_backend.outputs.exists == 'true'
       working-directory: virida_api
       run: npm ci
       
     - name: Lint code
+      if: steps.check_backend.outputs.exists == 'true'
       working-directory: virida_api
       run: npm run lint || echo "[WARN] Linting completed with warnings"
       
     - name: Run tests
+      if: steps.check_backend.outputs.exists == 'true'
       working-directory: virida_api
       run: npm test || echo "[WARN] Tests completed with warnings"
       
     - name: Build test
+      if: steps.check_backend.outputs.exists == 'true'
       working-directory: virida_api
       run: npm run build || echo "[INFO] Build test completed"
 
@@ -131,7 +155,7 @@ jobs:
   # SECURITY SCAN
   # ========================================
   security:
-    runs-on: ubuntu-latest
+    runs-on: virida-host
     name: Security Scan
     needs: [validate]
     
@@ -145,11 +169,13 @@ jobs:
         node-version: ${{ env.NODE_VERSION }}
         
     - name: Scan Frontend dependencies
+      if: ${{ hashFiles('virida_app/package.json') != '' }}
       working-directory: virida_app
       run: |
         npm audit --audit-level=moderate || echo "[WARN] Security vulnerabilities found in virida_app"
         
     - name: Scan Backend dependencies
+      if: ${{ hashFiles('virida_api/package.json') != '' }}
       working-directory: virida_api
       run: |
         npm audit --audit-level=moderate || echo "[WARN] Security vulnerabilities found in virida_api"
@@ -158,7 +184,7 @@ jobs:
   # BUILD
   # ========================================
   build:
-    runs-on: ubuntu-latest
+    runs-on: virida-host
     name: Build All
     needs: [test-frontend, test-backend]
     
@@ -172,6 +198,7 @@ jobs:
         node-version: ${{ env.NODE_VERSION }}
         
     - name: Build Frontend
+      if: ${{ hashFiles('virida_app/package.json') != '' }}
       working-directory: virida_app
       run: |
         npm ci
@@ -179,6 +206,7 @@ jobs:
         echo "[OK] Frontend build successful"
         
     - name: Build Backend
+      if: ${{ hashFiles('virida_api/package.json') != '' }}
       working-directory: virida_api
       run: |
         npm ci
@@ -189,7 +217,7 @@ jobs:
   # SUMMARY
   # ========================================
   ci-summary:
-    runs-on: ubuntu-latest
+    runs-on: virida-host
     name: CI Summary
     needs: [validate, test-frontend, test-backend, security, build]
     if: always()
