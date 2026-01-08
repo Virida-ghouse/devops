@@ -77,6 +77,8 @@ log:
 runner:
   file: .runner
   capacity: 1
+  envs:
+    PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 host:
   workdir_parent: "${RUNNER_WORK_DIR}"
