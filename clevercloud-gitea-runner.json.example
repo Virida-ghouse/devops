@@ -12,7 +12,7 @@
     "GITEA_TOKEN": "your-gitea-token",
     "RUNNER_NAME": "virida-runner",
     "RUNNER_LABELS": "ubuntu-latest:docker://node:18,ubuntu-20.04:docker://node:18,ubuntu-22.04:docker://node:22",
-    "RUNNER_WORK_DIR": "/workspace",
+    "RUNNER_WORK_DIR": "/tmp/act_runner/workspace",
     "DOCKER_BUILDKIT": "1",
     "COMPOSE_DOCKER_CLI_BUILD": "1"
   },

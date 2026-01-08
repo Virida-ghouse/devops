@@ -3,10 +3,11 @@ FROM ubuntu:22.04
 
 # Variables d'environnement
 ENV DEBIAN_FRONTEND=noninteractive
-ENV ACT_RUNNER_VERSION=0.2.14
+ENV ACT_RUNNER_VERSION=0.2.13
 ENV GITEA_INSTANCE_URL=""
 ENV RUNNER_NAME="virida-runner"
 ENV RUNNER_LABELS="ubuntu-latest:docker://node:18,ubuntu-latest:docker://python:3.11,ubuntu-latest:docker://golang:1.21"
+ENV RUNNER_WORK_DIR="/tmp/act_runner/workspace"
 
 # Installer les dépendances système
 RUN apt-get update && apt-get install -y \
@@ -49,13 +50,12 @@ WORKDIR /opt/gitea-runner
 RUN chown -R runner:runner /opt/gitea-runner
 
 # Télécharger et installer act_runner
-# Try specific version first, fallback to latest if it fails
-RUN (wget -q https://gitea.com/gitea/act_runner/releases/download/v${ACT_RUNNER_VERSION}/act_runner-${ACT_RUNNER_VERSION}-linux-amd64.tar.gz -O act_runner.tar.gz || \
-     wget -q https://gitea.com/gitea/act_runner/releases/latest/download/act_runner-linux-amd64.tar.gz -O act_runner.tar.gz) \
-    && tar -xzf act_runner.tar.gz \
-    && chmod +x act_runner \
-    && mv act_runner /usr/local/bin/ \
-    && rm -f act_runner.tar.gz
+# NOTE: Les releases act_runner ne fournissent pas (toujours) de .tar.gz ; l'asset est souvent un binaire direct.
+RUN set -eux; \
+    url="https://gitea.com/gitea/act_runner/releases/download/v${ACT_RUNNER_VERSION}/act_runner-${ACT_RUNNER_VERSION}-linux-amd64"; \
+    curl -fsSL "$url" -o /usr/local/bin/act_runner; \
+    chmod +x /usr/local/bin/act_runner; \
+    /usr/local/bin/act_runner --version || true
 
 # Copier les scripts
 COPY scripts/start-gitea-runner.sh /usr/local/bin/start-gitea-runner.sh
@@ -90,6 +90,7 @@ fi
 echo "Gitea instance: \$GITEA_INSTANCE_URL"
 echo "Runner name: \$RUNNER_NAME"
 echo "Labels: \$RUNNER_LABELS"
+echo "Workdir: \$RUNNER_WORK_DIR"
 echo ""
 
 # Start a tiny HTTP server so Clever Cloud healthchecks pass (binds to $PORT, defaults to 8080)
@@ -114,16 +115,19 @@ if [ ! -f "/opt/gitea-runner/.runner" ]; then
     fi
 
     echo "Registering runner with Gitea..."
+    mkdir -p "\$RUNNER_WORK_DIR"
     act_runner register \
         --instance "\$GITEA_INSTANCE_URL" \
         --token "\$GITEA_TOKEN" \
         --name "\$RUNNER_NAME" \
         --labels "\$RUNNER_LABELS" \
+        --workdir "\$RUNNER_WORK_DIR" \
         --no-interactive
 fi
 
 echo "Starting act_runner daemon..."
-exec act_runner daemon
+mkdir -p "\$RUNNER_WORK_DIR"
+exec act_runner daemon --workdir "\$RUNNER_WORK_DIR"
 EOF
 
 RUN chmod +x /usr/local/bin/entrypoint.sh
