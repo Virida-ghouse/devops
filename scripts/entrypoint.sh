@@ -7,6 +7,8 @@ echo "============================"
 # Defaults (can be overridden by environment)
 : "${RUNNER_WORK_DIR:=/tmp/act_runner/workspace}"
 
+cd /opt/gitea-runner
+
 ensure_workdir() {
     local desired="$1"
     local fallback="/tmp/act_runner/workspace"
@@ -27,6 +29,24 @@ ensure_workdir() {
 
 RUNNER_WORK_DIR="$(ensure_workdir "$RUNNER_WORK_DIR")"
 export RUNNER_WORK_DIR
+
+CONFIG_PATH="/opt/gitea-runner/config.yaml"
+WORKDIR_PARENT_CONTAINER="${RUNNER_WORK_DIR#/}"  # act_runner expects no leading "/" for container.workdir_parent
+
+cat > "$CONFIG_PATH" <<EOF
+log:
+  level: info
+
+runner:
+  file: .runner
+  capacity: 1
+
+container:
+  workdir_parent: "${WORKDIR_PARENT_CONTAINER}"
+
+host:
+  workdir_parent: "${RUNNER_WORK_DIR}"
+EOF
 
 # Vérifier les variables d'environnement
 if [ -z "${GITEA_INSTANCE_URL:-}" ]; then
@@ -78,6 +98,6 @@ fi
 
 echo "Starting act_runner daemon..."
 mkdir -p "${RUNNER_WORK_DIR}"
-exec act_runner daemon --workdir "${RUNNER_WORK_DIR}"
+exec act_runner daemon --config "${CONFIG_PATH}"
 
 
