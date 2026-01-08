@@ -1,0 +1,17 @@
+FROM sonarqube:10-community
+
+# Install Clever Cloud specific dependencies
+USER root
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+
+# Add Clever Cloud entrypoint script
+ADD clever-entrypoint.sh /opt/sonarqube/docker/
+
+# Make entrypoint executable
+RUN chmod +x /opt/sonarqube/docker/clever-entrypoint.sh
+
+# Switch back to sonarqube user
+USER sonarqube
+
+# Set entrypoint
+ENTRYPOINT ["/opt/sonarqube/docker/clever-entrypoint.sh"]

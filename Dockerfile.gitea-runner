@@ -3,7 +3,7 @@ FROM ubuntu:22.04
 
 # Variables d'environnement
 ENV DEBIAN_FRONTEND=noninteractive
-ENV ACT_RUNNER_VERSION=0.2.14
+ENV ACT_RUNNER_VERSION=0.2.13
 ENV GITEA_INSTANCE_URL=""
 ENV RUNNER_NAME="virida-runner"
 ENV RUNNER_LABELS="ubuntu-latest:docker://node:18,ubuntu-latest:docker://python:3.11,ubuntu-latest:docker://golang:1.21"
@@ -37,8 +37,10 @@ RUN apt-get update \
     && apt-get install -y golang-go \
     && rm -rf /var/lib/apt/lists/*
 
-# Note: Clever Tools CLI is not required inside the runner container.
-
+# Installer Clever Cloud CLI
+RUN curl -fsSL https://clever-tools.clever-cloud.com/releases/2.7.0/clever-tools-linux.tar.gz | tar -xz \
+    && mv clever /usr/local/bin/ \
+    && chmod +x /usr/local/bin/clever
 
 # Créer un utilisateur pour le runner
 RUN useradd -m -s /bin/bash runner \
@@ -48,16 +50,12 @@ RUN useradd -m -s /bin/bash runner \
 WORKDIR /opt/gitea-runner
 RUN chown -R runner:runner /opt/gitea-runner
 
-# Cache busting: Updated 2025-12-22 to fix act_runner download with fallback
-ARG CACHE_BUST=2025-12-22-v3
-
 # Télécharger et installer act_runner
-# Use latest release directly (more reliable than specific versions)
-RUN wget -q https://gitea.com/gitea/act_runner/releases/latest/download/act_runner-linux-amd64.tar.gz -O act_runner.tar.gz \
-    && tar -xzf act_runner.tar.gz \
+RUN wget https://gitea.com/gitea/act_runner/releases/download/v${ACT_RUNNER_VERSION}/act_runner-${ACT_RUNNER_VERSION}-linux-amd64.tar.gz \
+    && tar -xzf act_runner-${ACT_RUNNER_VERSION}-linux-amd64.tar.gz \
     && chmod +x act_runner \
     && mv act_runner /usr/local/bin/ \
-    && rm -f act_runner.tar.gz
+    && rm act_runner-${ACT_RUNNER_VERSION}-linux-amd64.tar.gz
 
 # Copier les scripts
 COPY scripts/start-gitea-runner.sh /usr/local/bin/start-gitea-runner.sh

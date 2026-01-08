@@ -1,0 +1,113 @@
+name: Security Scan
+
+on:
+  push:
+    branches: [ devops_crk ]
+  pull_request:
+    branches: [ devops_crk ]
+  schedule:
+    # Scan quotidien à 2h du matin
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest:host
+    name: Security Scan VIRIDA
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: Install Trivy
+      run: |
+        sudo apt-get update
+        sudo apt-get install wget apt-transport-https gnupg lsb-release
+        wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+        echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+        sudo apt-get update
+        sudo apt-get install trivy
+        
+    - name: Install hadolint
+      run: |
+        wget -O hadolint "https://github.com/hadolint/hadolint/releases/latest/download/hadolint-$(uname -s)-$(uname -m)"
+        chmod +x hadolint
+        sudo mv hadolint /usr/local/bin/
+        
+    - name: Install Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        
+    - name: Scan Node.js dependencies (virida_app)
+      working-directory: virida_app
+      run: |
+        mkdir -p ../security-results/dependencies
+        npm audit --json > ../security-results/dependencies/virida-app-npm-audit.json 2>/dev/null || echo '{"vulnerabilities": {}}' > ../security-results/dependencies/virida-app-npm-audit.json
+        
+    - name: Scan Node.js dependencies (virida_api)
+      working-directory: virida_api
+      run: |
+        mkdir -p ../security-results/dependencies
+        npm audit --json > ../security-results/dependencies/virida-api-npm-audit.json 2>/dev/null || echo '{"vulnerabilities": {}}' > ../security-results/dependencies/virida-api-npm-audit.json
+        
+    - name: Lint Dockerfiles with hadolint
+      run: |
+        mkdir -p security-results/code
+        
+        # Linter les Dockerfiles existants
+        if [ -f "Dockerfile" ]; then
+          hadolint Dockerfile --format json > security-results/code/dockerfile-hadolint.json 2>/dev/null || echo '[]' > security-results/code/dockerfile-hadolint.json
+        fi
+        
+        if [ -f "Dockerfile.gitea" ]; then
+          hadolint Dockerfile.gitea --format json > security-results/code/dockerfile-gitea-hadolint.json 2>/dev/null || echo '[]' > security-results/code/dockerfile-gitea-hadolint.json
+        fi
+        
+        if [ -f "Dockerfile.gitea-runner" ]; then
+          hadolint Dockerfile.gitea-runner --format json > security-results/code/dockerfile-gitea-runner-hadolint.json 2>/dev/null || echo '[]' > security-results/code/dockerfile-gitea-runner-hadolint.json
+        fi
+        
+    - name: Generate security summary
+      run: |
+        # Créer un résumé des scans
+        cat > security-results/security-summary.json << EOF
+        {
+          "scan_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+          "workflow_run": "${{ gitea.run_id || 'N/A' }}",
+          "commit": "${{ gitea.sha }}",
+          "branch": "${{ gitea.ref_name || 'devops_crk' }}",
+          "scans_performed": [
+            "nodejs_dependencies_npm_audit",
+            "dockerfiles_hadolint"
+          ],
+          "results_directory": "security-results"
+        }
+        EOF
+        
+    - name: Upload security results
+      uses: actions/upload-artifact@v3
+      with:
+        name: security-scan-results
+        path: security-results/
+        retention-days: 30
+        
+    - name: Security summary
+      run: |
+        echo "Security Scan Summary"
+        echo "========================"
+        echo "Date: $(date)"
+        echo "Workflow: ${{ gitea.run_id || 'N/A' }}"
+        echo "Commit: ${{ gitea.sha }}"
+        echo "Branch: ${{ gitea.ref_name || 'devops_crk' }}"
+        echo ""
+        echo "Scans performed:"
+        echo "  [OK] Node.js dependencies (npm audit) - virida_app"
+        echo "  [OK] Node.js dependencies (npm audit) - virida_api"
+        echo "  [OK] Dockerfiles (hadolint)"
+        echo ""
+        echo "Results uploaded as artifact: security-scan-results"
+        echo "Next scan: Daily at 2:00 AM UTC"

@@ -1,0 +1,36 @@
+#!/usr/bin/env python3
+
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import os
+
+
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path in ("/health", "/healthz", "/"):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(b"ok\n")
+            return
+
+        self.send_response(404)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(b"not found\n")
+
+    def log_message(self, format, *args):
+        # silence
+        return
+
+
+def main():
+    host = "0.0.0.0"
+    port = int(os.environ.get("PORT", "8080"))
+    httpd = HTTPServer((host, port), Handler)
+    httpd.serve_forever()
+
+
+if __name__ == "__main__":
+    main()
+
+

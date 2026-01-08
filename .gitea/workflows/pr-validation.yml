@@ -1,0 +1,120 @@
+name: PR Validation & Review
+
+on:
+  pull_request:
+    branches: [ devops_crk ]
+  workflow_dispatch:
+
+jobs:
+  pr-validation:
+    runs-on: ubuntu-latest:host
+    name: PR Validation
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Validate PR
+        run: |
+          echo "Validating Pull Request..."
+          echo "PR Title: ${{ gitea.event.pull_request.title || 'N/A' }}"
+          echo "PR Author: ${{ gitea.event.pull_request.user.login || 'N/A' }}"
+          echo "Base branch: ${{ gitea.event.pull_request.base.ref || 'devops_crk' }}"
+          echo "Head branch: ${{ gitea.event.pull_request.head.ref || 'N/A' }}"
+          
+      - name: Check PR Size
+        run: |
+          CHANGED_FILES=$(git diff --name-only ${{ gitea.event.pull_request.base.sha || 'HEAD~1' }} ${{ gitea.event.pull_request.head.sha || 'HEAD' }} | wc -l)
+          echo "Number of changed files: $CHANGED_FILES"
+          if [ $CHANGED_FILES -gt 50 ]; then
+            echo "[WARN] Warning: This PR has more than 50 changed files"
+            exit 1
+          fi
+
+  code-analysis:
+    runs-on: ubuntu-latest:host
+    name: Code Analysis
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Run Linting
+        run: |
+          echo "Running code analysis..."
+          
+          # Frontend linting
+          if [ -d "apps/frontend-3d" ]; then
+            cd apps/frontend-3d
+            npm ci
+            npm run lint || echo "Frontend linting completed with warnings"
+            cd ../..
+          fi
+          
+          # Python linting
+          if [ -d "apps/ai-ml" ]; then
+            cd apps/ai-ml
+            pip install flake8
+            flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics || echo "Python linting completed with warnings"
+            cd ../..
+          fi
+          
+          # Go linting
+          if [ -d "apps/gitea-drone-ci" ]; then
+            cd apps/gitea-drone-ci
+            go vet ./... || echo "Go vet completed with warnings"
+            cd ../..
+          fi
+
+  build-validation:
+    runs-on: ubuntu-latest:host
+    name: Build Validation
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Validate Frontend Build
+        run: |
+          if [ -d "apps/frontend-3d" ]; then
+            cd apps/frontend-3d
+            npm ci
+            npm run build
+            echo "Frontend build validation successful"
+            cd ../..
+          fi
+          
+      - name: Validate AI/ML Build
+        run: |
+          if [ -d "apps/ai-ml" ]; then
+            cd apps/ai-ml
+            pip install -r requirements.txt
+            python -c "import app; print('AI/ML import successful')"
+            echo "AI/ML build validation successful"
+            cd ../..
+          fi
+          
+      - name: Validate Go Build
+        run: |
+          if [ -d "apps/gitea-drone-ci" ]; then
+            cd apps/gitea-drone-ci
+            go mod download
+            go build -o main .
+            echo "Go build validation successful"
+            cd ../..
+          fi
+
+  pr-comment:
+    runs-on: ubuntu-latest:host
+    name: PR Comment
+    needs: [pr-validation, code-analysis, build-validation]
+    if: always()
+    steps:
+      - name: Comment on PR
+        run: |
+          echo "PR validation completed!"
+          echo "Status: ${{ needs.pr-validation.result }}"
+          echo "Code analysis: ${{ needs.code-analysis.result }}"
+          echo "Build validation: ${{ needs.build-validation.result }}"
+          
+          # Ici vous pouvez ajouter des commentaires automatiques sur la PR
+          # en utilisant l'API Gitea

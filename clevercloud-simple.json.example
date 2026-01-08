@@ -1,0 +1,19 @@
+{
+  "build": {
+    "type": "docker",
+    "dockerfile": "Dockerfile.simple"
+  },
+  "deploy": {
+    "target": "gitea-runner-simple",
+    "command": "/start.sh"
+  },
+  "environment": {
+    "GITEA_INSTANCE_URL": "https://gitea.com",
+    "GITEA_TOKEN": "your-gitea-token",
+    "RUNNER_NAME": "virida-runner-simple",
+    "RUNNER_LABELS": "ubuntu-latest:docker://node:18"
+  }
+}
+
+
+
