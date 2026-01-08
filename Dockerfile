@@ -4,6 +4,7 @@ FROM ubuntu:22.04
 # Variables d'environnement
 ENV DEBIAN_FRONTEND=noninteractive
 ENV ACT_RUNNER_VERSION=0.2.13
+ENV PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 ENV GITEA_INSTANCE_URL=""
 ENV RUNNER_NAME="virida-runner"
 # IMPORTANT: labels must be unique. If you repeat "ubuntu-latest" multiple times,
@@ -37,6 +38,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
     && node --version \
     && npm --version \
+    && ln -sf "$(command -v node)" /usr/local/bin/node \
     && ln -sf "$(command -v node)" /usr/local/bin/node16 \
     && ln -sf "$(command -v node)" /usr/local/bin/node20
 
