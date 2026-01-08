@@ -6,7 +6,11 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV ACT_RUNNER_VERSION=0.2.13
 ENV GITEA_INSTANCE_URL=""
 ENV RUNNER_NAME="virida-runner"
-ENV RUNNER_LABELS="ubuntu-latest:docker://node:18,ubuntu-latest:docker://python:3.11,ubuntu-latest:docker://golang:1.21"
+# IMPORTANT: labels must be unique. If you repeat "ubuntu-latest" multiple times,
+# the last one may win and your jobs may run in an image without Node, causing
+# JS-based actions (actions/checkout, actions/setup-node, ...) to fail with:
+# "Cannot find: node in PATH".
+ENV RUNNER_LABELS="ubuntu-latest:docker://node:18,python:docker://python:3.11,golang:docker://golang:1.21"
 ENV RUNNER_WORK_DIR="/tmp/act_runner/workspace"
 
 # Installer les dépendances système
@@ -14,6 +18,11 @@ RUN apt-get update && apt-get install -y \
     wget \
     curl \
     git \
+    tar \
+    unzip \
+    zip \
+    xz-utils \
+    openssh-client \
     docker.io \
     docker-compose \
     build-essential \
