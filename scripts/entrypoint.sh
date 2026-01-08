@@ -7,6 +7,27 @@ echo "============================"
 # Defaults (can be overridden by environment)
 : "${RUNNER_WORK_DIR:=/tmp/act_runner/workspace}"
 
+ensure_workdir() {
+    local desired="$1"
+    local fallback="/tmp/act_runner/workspace"
+
+    # Try desired workdir
+    if mkdir -p "$desired" 2>/dev/null; then
+        if ( : > "$desired/.virida_write_test" ) 2>/dev/null; then
+            rm -f "$desired/.virida_write_test" 2>/dev/null || true
+            echo "$desired"
+            return 0
+        fi
+    fi
+
+    echo "[WARN] RUNNER_WORK_DIR='$desired' is not writable. Falling back to '$fallback'."
+    mkdir -p "$fallback"
+    echo "$fallback"
+}
+
+RUNNER_WORK_DIR="$(ensure_workdir "$RUNNER_WORK_DIR")"
+export RUNNER_WORK_DIR
+
 # Vérifier les variables d'environnement
 if [ -z "${GITEA_INSTANCE_URL:-}" ]; then
     echo "[ERROR] GITEA_INSTANCE_URL is not set"
