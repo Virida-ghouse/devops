@@ -9,6 +9,27 @@ echo "============================"
 
 cd /opt/gitea-runner
 
+has_docker() {
+    command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1
+}
+
+labels_to_host() {
+    # Convert "ubuntu-latest:docker://node:18,foo:docker://bar" => "ubuntu-latest:host,foo:host"
+    # If a label already ends with ":host", keep it.
+    local in="${1:-}"
+    local out=""
+    local IFS=',' part base
+    for part in $in; do
+        base="${part%%:*}"
+        if [ -z "$base" ]; then
+            continue
+        fi
+        if [ -n "$out" ]; then out="${out},"; fi
+        out="${out}${base}:host"
+    done
+    printf '%s' "$out"
+}
+
 ensure_workdir() {
     local desired="$1"
     local fallback="/tmp/act_runner/workspace"
@@ -61,7 +82,14 @@ fi
 
 echo "Gitea instance: ${GITEA_INSTANCE_URL}"
 echo "Runner name: ${RUNNER_NAME}"
-echo "Labels: ${RUNNER_LABELS:-}"
+EFFECTIVE_LABELS="${RUNNER_LABELS:-}"
+if ! has_docker; then
+    # Clever Cloud environment typically doesn't provide Docker daemon. Force host executor labels.
+    EFFECTIVE_LABELS="$(labels_to_host "${RUNNER_LABELS:-}")"
+    echo "[WARN] Docker not available; forcing host labels: ${EFFECTIVE_LABELS}"
+else
+    echo "Labels: ${EFFECTIVE_LABELS}"
+fi
 echo "Workdir: ${RUNNER_WORK_DIR}"
 echo ""
 
@@ -92,8 +120,24 @@ if [ ! -f "/opt/gitea-runner/.runner" ]; then
         --instance "${GITEA_INSTANCE_URL}" \
         --token "${GITEA_TOKEN}" \
         --name "${RUNNER_NAME}" \
-        --labels "${RUNNER_LABELS:-}" \
+        --labels "${EFFECTIVE_LABELS}" \
         --no-interactive
+else
+    # If already registered with docker:// labels but Docker isn't available, re-register with host labels.
+    if ! has_docker && grep -q "docker://" "/opt/gitea-runner/.runner" 2>/dev/null; then
+        echo "[WARN] Existing .runner requests Docker executor but Docker isn't available; re-registering with host labels."
+        rm -f "/opt/gitea-runner/.runner"
+        if [ -z "${GITEA_TOKEN:-}" ]; then
+            echo "[ERROR] Need GITEA_TOKEN to re-register runner with host labels"
+            exit 1
+        fi
+        act_runner register \
+            --instance "${GITEA_INSTANCE_URL}" \
+            --token "${GITEA_TOKEN}" \
+            --name "${RUNNER_NAME}" \
+            --labels "$(labels_to_host "${RUNNER_LABELS:-}")" \
+            --no-interactive
+    fi
 fi
 
 echo "Starting act_runner daemon..."
