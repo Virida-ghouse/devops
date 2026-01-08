@@ -2,9 +2,9 @@ name: Simple Test Workflow
 
 on:
   push:
-    branches: [ devops_crk ]
+    branches: [ master ]
   pull_request:
-    branches: [ devops_crk ]
+    branches: [ master ]
   workflow_dispatch:
 
 jobs:

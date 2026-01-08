@@ -2,9 +2,9 @@ name: Security Scan
 
 on:
   push:
-    branches: [ devops_crk ]
+    branches: [ master ]
   pull_request:
-    branches: [ devops_crk ]
+    branches: [ master ]
   schedule:
     # Scan quotidien à 2h du matin
     - cron: '0 2 * * *'
