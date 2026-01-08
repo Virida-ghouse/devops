@@ -73,7 +73,6 @@ if [ ! -f "/opt/gitea-runner/.runner" ]; then
         --token "${GITEA_TOKEN}" \
         --name "${RUNNER_NAME}" \
         --labels "${RUNNER_LABELS:-}" \
-        --workdir "${RUNNER_WORK_DIR}" \
         --no-interactive
 fi
 
