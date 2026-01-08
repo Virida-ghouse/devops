@@ -67,7 +67,10 @@ export RUNNER_WORK_DIR
 CONFIG_PATH="/opt/gitea-runner/config.yaml"
 WORKDIR_PARENT_CONTAINER="${RUNNER_WORK_DIR#/}"  # act_runner expects no leading "/" for container.workdir_parent
 
-cat > "$CONFIG_PATH" <<EOF
+write_config() {
+    # act_runner v0.2.13 can fail hard if Docker isn't available AND a container section is present.
+    # So we only include container config when Docker is reachable.
+    cat > "$CONFIG_PATH" <<EOF
 log:
   level: info
 
@@ -75,12 +78,22 @@ runner:
   file: .runner
   capacity: 1
 
-container:
-  workdir_parent: "${WORKDIR_PARENT_CONTAINER}"
-
 host:
   workdir_parent: "${RUNNER_WORK_DIR}"
 EOF
+
+    if has_docker; then
+        cat >> "$CONFIG_PATH" <<EOF
+
+container:
+  workdir_parent: "${WORKDIR_PARENT_CONTAINER}"
+EOF
+    else
+        echo "[WARN] Docker not available; generating config without 'container:' section."
+    fi
+}
+
+write_config
 
 # Vérifier les variables d'environnement
 if [ -z "${GITEA_INSTANCE_URL:-}" ]; then
