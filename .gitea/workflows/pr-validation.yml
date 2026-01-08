@@ -7,7 +7,7 @@ on:
 
 jobs:
   pr-validation:
-    runs-on: ubuntu-latest
+    runs-on: virida-host
     name: PR Validation
     steps:
       - name: Checkout code
@@ -33,7 +33,7 @@ jobs:
           fi
 
   code-analysis:
-    runs-on: ubuntu-latest
+    runs-on: virida-host
     name: Code Analysis
     steps:
       - name: Checkout code
@@ -67,7 +67,7 @@ jobs:
           fi
 
   build-validation:
-    runs-on: ubuntu-latest
+    runs-on: virida-host
     name: Build Validation
     steps:
       - name: Checkout code
@@ -104,7 +104,7 @@ jobs:
           fi
 
   pr-comment:
-    runs-on: ubuntu-latest
+    runs-on: virida-host
     name: PR Comment
     needs: [pr-validation, code-analysis, build-validation]
     if: always()

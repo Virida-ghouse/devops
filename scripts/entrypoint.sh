@@ -112,8 +112,9 @@ echo "Gitea instance: ${GITEA_INSTANCE_URL}"
 echo "Runner name: ${RUNNER_NAME}"
 EFFECTIVE_LABELS="${RUNNER_LABELS:-}"
 if ! has_docker; then
-    # Clever Cloud environment typically doesn't provide Docker daemon. Force host executor labels.
-    EFFECTIVE_LABELS="$(labels_to_host "${RUNNER_LABELS:-}")"
+    # Clever Cloud environment typically doesn't provide Docker daemon.
+    # Use a UNIQUE host label to avoid jobs randomly landing on another runner (and failing due to missing node, etc.).
+    EFFECTIVE_LABELS="virida-host:host"
     echo "[WARN] Docker not available; forcing host labels: ${EFFECTIVE_LABELS}"
 else
     echo "Labels: ${EFFECTIVE_LABELS}"
@@ -152,8 +153,8 @@ if [ ! -f "/opt/gitea-runner/.runner" ]; then
         --no-interactive
 else
     # If already registered with docker:// labels but Docker isn't available, re-register with host labels.
-    if ! has_docker && grep -q "docker://" "/opt/gitea-runner/.runner" 2>/dev/null; then
-        echo "[WARN] Existing .runner requests Docker executor but Docker isn't available; re-registering with host labels."
+    if ! has_docker && ! grep -q "virida-host" "/opt/gitea-runner/.runner" 2>/dev/null; then
+        echo "[WARN] Existing .runner labels do not match required 'virida-host'. Re-registering."
         rm -f "/opt/gitea-runner/.runner"
         if [ -z "${GITEA_TOKEN:-}" ]; then
             echo "[ERROR] Need GITEA_TOKEN to re-register runner with host labels"
@@ -163,7 +164,7 @@ else
             --instance "${GITEA_INSTANCE_URL}" \
             --token "${GITEA_TOKEN}" \
             --name "${RUNNER_NAME}" \
-            --labels "$(labels_to_host "${RUNNER_LABELS:-}")" \
+            --labels "virida-host:host" \
             --no-interactive
     fi
 fi
