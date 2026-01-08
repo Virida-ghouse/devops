@@ -10,7 +10,6 @@ echo "=========================================="
 
 # Variables
 APP_NAME="virida-sonarqube"
-CLEVER_JSON="clevercloud-sonarqube.json"
 
 # Couleurs
 GREEN='\033[0;32m'
@@ -49,18 +48,21 @@ fi
 log_info "Liaison de l'application..."
 clever link --alias "$APP_NAME"
 
-# Déployer la configuration
-log_info "Déploiement de la configuration..."
-clever env import "$CLEVER_JSON"
-
 # Créer l'addon PostgreSQL
 log_info "Création de l'addon PostgreSQL..."
 if ! clever addons | grep -q "postgresql-addon"; then
-    clever addon create postgresql-addon --plan dev
+    # Name + addon type are both required by Clever Tools, then we link it to the app.
+    clever addon create postgresql-addon postgresql-addon --plan dev --link "$APP_NAME"
     log_info "Addon PostgreSQL créé"
 else
     log_info "Addon PostgreSQL existe déjà"
 fi
+
+# Configurer les variables d'environnement
+log_info "Configuration des variables d'environnement..."
+clever env set SONAR_WEB_PORT 9000 --alias "$APP_NAME"
+clever env set SONAR_WEB_CONTEXT / --alias "$APP_NAME"
+clever env set SONAR_ES_BOOTSTRAP_CHECKS_DISABLE true --alias "$APP_NAME"
 
 # Déployer l'application
 log_info "Déploiement de SonarQube..."
@@ -75,7 +77,7 @@ log_info "Vérification du statut..."
 clever status
 
 # Afficher l'URL
-APP_URL=$(clever domain | head -1)
+APP_URL=$(clever domain --alias "$APP_NAME" | head -1)
 log_info "SonarQube déployé avec succès !"
 echo ""
 echo "🌐 URL: https://$APP_URL"
