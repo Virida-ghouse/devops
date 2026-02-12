@@ -46,12 +46,12 @@ fi
 
 export SONAR_JDBC_USERNAME="${POSTGRES_USER}"
 export SONAR_JDBC_PASSWORD="${POSTGRES_PASSWORD}"
-export SONAR_JDBC_URL="jdbc:postgresql://${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}"
+# Clever Cloud Postgres requires SSL
+export SONAR_JDBC_URL="jdbc:postgresql://${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}?sslmode=require"
 
 # Set additional SonarQube configuration
-# IMPORTANT: Prefer SONAR_WEB_PORT (repo config uses 9000). Only fall back to PORT when SONAR_WEB_PORT
-# isn't provided, for compatibility with platforms enforcing a dynamic bind port.
-export SONAR_WEB_PORT="${SONAR_WEB_PORT:-${PORT:-9000}}"
+# Clever Cloud expects app on PORT(8080). Force 8080 when PORT is set.
+export SONAR_WEB_PORT="${PORT:-8080}"
 export SONAR_WEB_CONTEXT="${SONAR_WEB_CONTEXT:-/}"
 
 # Log configuration
