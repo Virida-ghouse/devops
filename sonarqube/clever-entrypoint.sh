@@ -51,6 +51,7 @@ echo "  - Web: internal port 9000, nginx proxy on ${PORT:-8080}"
 
 # Start SonarQube in background as sonarqube user (SonarQube refuses to run as root)
 # Write env to file and source it - avoids shell escaping issues with su -c
+# SONAR_SEARCH_JAVAOPTS: limit Elasticsearch heap to avoid OOM (exit 137) on small instances
 cat > /tmp/sonar-env.sh << ENVSCRIPT
 export SONAR_JDBC_USERNAME="${POSTGRES_USER}"
 export SONAR_JDBC_PASSWORD="${POSTGRES_PASSWORD}"
@@ -58,6 +59,7 @@ export SONAR_JDBC_URL="jdbc:postgresql://${POSTGRES_HOST}:${POSTGRES_PORT}/${POS
 export SONAR_WEB_PORT="9000"
 export SONAR_WEB_CONTEXT="${SONAR_WEB_CONTEXT:-/}"
 export SONAR_ES_BOOTSTRAP_CHECKS_DISABLE="${SONAR_ES_BOOTSTRAP_CHECKS_DISABLE:-true}"
+export SONAR_SEARCH_JAVAOPTS="${SONAR_SEARCH_JAVAOPTS:--Xms256m -Xmx512m}"
 ENVSCRIPT
 chmod 644 /tmp/sonar-env.sh
 
