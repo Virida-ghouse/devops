@@ -2,6 +2,7 @@ FROM sonarqube:10-community
 
 # Install nginx (reverse proxy) + curl
 USER root
+ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y nginx curl && rm -rf /var/lib/apt/lists/*
 
 # Add Clever Cloud entrypoint and nginx config
