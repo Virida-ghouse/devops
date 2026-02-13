@@ -49,11 +49,27 @@ echo "SonarQube configuration:"
 echo "  - DB: ${POSTGRES_DB} @ ${POSTGRES_HOST}:${POSTGRES_PORT}"
 echo "  - Web: internal port 9000, nginx proxy on ${PORT:-8080}"
 
-# Start SonarQube in background (as sonarqube user, preserve env vars)
-su -p sonarqube -c "/opt/sonarqube/docker/entrypoint.sh" &
+# Start SonarQube in background as sonarqube user (SonarQube refuses to run as root)
+# Write env to file and source it - avoids shell escaping issues with su -c
+cat > /tmp/sonar-env.sh << ENVSCRIPT
+export SONAR_JDBC_USERNAME="${POSTGRES_USER}"
+export SONAR_JDBC_PASSWORD="${POSTGRES_PASSWORD}"
+export SONAR_JDBC_URL="jdbc:postgresql://${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}?sslmode=require"
+export SONAR_WEB_PORT="9000"
+export SONAR_WEB_CONTEXT="${SONAR_WEB_CONTEXT:-/}"
+export SONAR_ES_BOOTSTRAP_CHECKS_DISABLE="${SONAR_ES_BOOTSTRAP_CHECKS_DISABLE:-true}"
+ENVSCRIPT
+chmod 644 /tmp/sonar-env.sh
+
+if command -v runuser >/dev/null 2>&1; then
+  runuser -u sonarqube -- sh -c '. /tmp/sonar-env.sh && exec /opt/sonarqube/docker/entrypoint.sh' &
+else
+  su sonarqube -c '. /tmp/sonar-env.sh && exec /opt/sonarqube/docker/entrypoint.sh' &
+fi
+echo "[SonarQube] Started in background (PID $!)"
 
 # Give SonarQube a moment to begin startup
-sleep 3
+sleep 5
 
 # Start nginx in foreground (listens on 8080, /health returns 200 immediately)
 exec nginx -g "daemon off;"
