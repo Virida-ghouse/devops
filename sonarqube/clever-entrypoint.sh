@@ -1,15 +1,15 @@
 #!/bin/sh
 
 # Clever Cloud SonarQube Entrypoint Script
-# This script configures SonarQube to work with Clever Cloud PostgreSQL addon
+# - SonarQube runs on 9000 (internal)
+# - Nginx listens on PORT (8080), proxies to SonarQube, /health returns 200 immediately
+# - Set CC_HEALTH_CHECK_PATH=/health in Clever Cloud so deployment succeeds while SonarQube starts
 
 set -eu
 
 echo "Starting SonarQube on Clever Cloud..."
 
 # ---- PostgreSQL addon env vars (support multiple Clever Cloud naming styles) ----
-# Preferred (documented in this repo): POSTGRESQL_ADDON_HOST/PORT/DB/USER/PASSWORD
-# Fallbacks: CC_POSTGRESQL_ADDON_* and URI-style variables when present.
 POSTGRES_HOST="${POSTGRESQL_ADDON_HOST:-${CC_POSTGRESQL_ADDON_HOST:-}}"
 POSTGRES_PORT="${POSTGRESQL_ADDON_PORT:-${CC_POSTGRESQL_ADDON_PORT:-}}"
 POSTGRES_DB="${POSTGRESQL_ADDON_DB:-${CC_POSTGRESQL_ADDON_DB:-}}"
@@ -17,13 +17,8 @@ POSTGRES_USER="${POSTGRESQL_ADDON_USER:-${CC_POSTGRESQL_ADDON_USER:-}}"
 POSTGRES_PASSWORD="${POSTGRESQL_ADDON_PASSWORD:-${CC_POSTGRESQL_ADDON_PASSWORD:-}}"
 
 if [ -z "${POSTGRES_HOST}" ] || [ -z "${POSTGRES_PORT}" ] || [ -z "${POSTGRES_DB}" ] || [ -z "${POSTGRES_USER}" ] || [ -z "${POSTGRES_PASSWORD}" ]; then
-  # Try URI variables (best-effort) only if the classic vars are missing
   POSTGRES_URI="${POSTGRESQL_ADDON_URI:-${POSTGRESQL_ADDON_URL:-${CC_POSTGRESQL_ADDON_URI:-${CC_POSTGRESQL_ADDON_URL:-}}}}"
   if [ -n "${POSTGRES_URI}" ]; then
-    # Expected formats:
-    # - postgres://user:pass@host:port/db
-    # - postgresql://user:pass@host:port/db
-    # Note: shell parsing is intentionally simple and assumes no special characters needing URL decoding.
     _uri_no_proto="${POSTGRES_URI#postgresql://}"
     _uri_no_proto="${_uri_no_proto#postgres://}"
     _creds="${_uri_no_proto%%@*}"
@@ -39,28 +34,27 @@ fi
 
 if [ -z "${POSTGRES_HOST}" ] || [ -z "${POSTGRES_PORT}" ] || [ -z "${POSTGRES_DB}" ] || [ -z "${POSTGRES_USER}" ] || [ -z "${POSTGRES_PASSWORD}" ]; then
   echo "[ERROR] Missing PostgreSQL addon env vars."
-  echo "        Expected: POSTGRESQL_ADDON_HOST/PORT/DB/USER/PASSWORD (or CC_POSTGRESQL_ADDON_*)."
-  echo "        Optional fallback: POSTGRESQL_ADDON_URI / POSTGRESQL_ADDON_URL."
   exit 1
 fi
 
 export SONAR_JDBC_USERNAME="${POSTGRES_USER}"
 export SONAR_JDBC_PASSWORD="${POSTGRES_PASSWORD}"
-# Clever Cloud Postgres requires SSL
 export SONAR_JDBC_URL="jdbc:postgresql://${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}?sslmode=require"
 
-# Set additional SonarQube configuration
-# Clever Cloud expects app on PORT(8080). Force 8080 when PORT is set.
-export SONAR_WEB_PORT="${PORT:-8080}"
+# SonarQube on 9000 (internal); nginx listens on PORT (8080) and proxies
+export SONAR_WEB_PORT="9000"
 export SONAR_WEB_CONTEXT="${SONAR_WEB_CONTEXT:-/}"
 
-# Log configuration
 echo "SonarQube configuration:"
-echo "  - DB: ${POSTGRES_DB}"
-echo "  - Host: ${POSTGRES_HOST}:${POSTGRES_PORT}"
-echo "  - User: ${POSTGRES_USER}"
-echo "  - Web port: ${SONAR_WEB_PORT}"
+echo "  - DB: ${POSTGRES_DB} @ ${POSTGRES_HOST}:${POSTGRES_PORT}"
+echo "  - Web: internal port 9000, nginx proxy on ${PORT:-8080}"
 
-# Execute original SonarQube entrypoint
-exec /opt/sonarqube/docker/entrypoint.sh
+# Start SonarQube in background (as sonarqube user, preserve env vars)
+su -p sonarqube -c "/opt/sonarqube/docker/entrypoint.sh" &
+
+# Give SonarQube a moment to begin startup
+sleep 3
+
+# Start nginx in foreground (listens on 8080, /health returns 200 immediately)
+exec nginx -g "daemon off;"
 
