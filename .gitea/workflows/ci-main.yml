@@ -273,7 +273,7 @@ jobs:
         NODE_OPTIONS: --no-warnings
       run: |
         npm ci
-        npm test -- --ci --runInBand
+        npm test -- --ci --runInBand --coverage
 
     - name: Install + test frontend
       if: ${{ hashFiles('virida_app/package.json') != '' }}
