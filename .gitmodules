@@ -1,3 +1,6 @@
 [submodule "virida_api"]
 	path = virida_api
 	url = https://github.com/Virida-ghouse/virida_api.git
+[submodule "virida_app"]
+	path = virida_app
+	url = https://github.com/Virida-ghouse/virida_app.git
