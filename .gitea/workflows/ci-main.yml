@@ -1,14 +1,15 @@
 name: VIRIDA CI - Main Pipeline
 
+# Déclenchement sur chaque branche du repo VIRIDA
 on:
   push:
-    branches: [ master ]
   pull_request:
-    branches: [ master ]
   workflow_dispatch:
 
 env:
   NODE_VERSION: '18'
+  # Ensure frontend doesn't trigger expensive postinstall builds during CI installs
+  NPM_CONFIG_IGNORE_SCRIPTS: 'true'
 
 jobs:
   # ========================================
@@ -19,8 +20,16 @@ jobs:
     name: Validate Code
     
     steps:
+    - name: CI déclenchée
+      run: |
+        echo "🚀 CI lancée sur branche: ${{ github.ref_name }}"
+        echo "📝 Commit: ${{ github.sha }}"
+        echo "👤 Auteur: ${{ github.actor }}"
+    
     - name: Checkout code
       uses: actions/checkout@v3
+      with:
+        submodules: recursive
       
     - name: Validate YAML files
       run: |
@@ -64,11 +73,15 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
+      with:
+        submodules: recursive
       
     - name: Setup Node.js
       uses: actions/setup-node@v3
       with:
         node-version: ${{ env.NODE_VERSION }}
+        cache: npm
+        cache-dependency-path: virida_app/package-lock.json
 
     - name: Check virida_app exists
       id: check_frontend
@@ -83,27 +96,24 @@ jobs:
     - name: Install dependencies
       if: steps.check_frontend.outputs.exists == 'true'
       working-directory: virida_app
-      run: npm ci
+      run: npm ci --ignore-scripts
       
     - name: Lint code
       if: steps.check_frontend.outputs.exists == 'true'
       working-directory: virida_app
       run: npm run lint || echo "[WARN] Linting completed with warnings"
       
-    - name: Run tests (if available)
+    - name: Run tests
       if: steps.check_frontend.outputs.exists == 'true'
       working-directory: virida_app
-      run: |
-        if npm run | grep -q "test"; then
-          npm test || echo "[WARN] Tests completed with warnings"
-        else
-          echo "[INFO] No test script found, skipping tests"
-        fi
+      run: npm test
       
     - name: Build
       if: steps.check_frontend.outputs.exists == 'true'
       working-directory: virida_app
-      run: npm run build
+      env:
+        NODE_OPTIONS: --max-old-space-size=2048 --no-warnings
+      run: npm run build:simple
 
   # ========================================
   # TESTS BACKEND (virida_api)
@@ -115,11 +125,15 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
+      with:
+        submodules: recursive
       
     - name: Setup Node.js
       uses: actions/setup-node@v3
       with:
         node-version: ${{ env.NODE_VERSION }}
+        cache: npm
+        cache-dependency-path: virida_api/package-lock.json
 
     - name: Check virida_api exists
       id: check_backend
@@ -144,7 +158,9 @@ jobs:
     - name: Run tests
       if: steps.check_backend.outputs.exists == 'true'
       working-directory: virida_api
-      run: npm test || echo "[WARN] Tests completed with warnings"
+      env:
+        NODE_OPTIONS: --no-warnings
+      run: npm test -- --ci --runInBand
       
     - name: Build test
       if: steps.check_backend.outputs.exists == 'true'
@@ -162,11 +178,17 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
+      with:
+        submodules: recursive
       
     - name: Setup Node.js
       uses: actions/setup-node@v3
       with:
         node-version: ${{ env.NODE_VERSION }}
+        cache: npm
+        cache-dependency-path: |
+          virida_app/package-lock.json
+          virida_api/package-lock.json
         
     - name: Scan Frontend dependencies
       if: ${{ hashFiles('virida_app/package.json') != '' }}
@@ -191,18 +213,24 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
+      with:
+        submodules: recursive
       
     - name: Setup Node.js
       uses: actions/setup-node@v3
       with:
         node-version: ${{ env.NODE_VERSION }}
+        cache: npm
+        cache-dependency-path: |
+          virida_app/package-lock.json
+          virida_api/package-lock.json
         
     - name: Build Frontend
       if: ${{ hashFiles('virida_app/package.json') != '' }}
       working-directory: virida_app
       run: |
-        npm ci
-        npm run build
+        npm ci --ignore-scripts
+        NODE_OPTIONS="--max-old-space-size=2048 --no-warnings" npm run build:simple
         echo "[OK] Frontend build successful"
         
     - name: Build Backend
@@ -214,12 +242,109 @@ jobs:
         echo "[OK] Backend build successful"
 
   # ========================================
+  # SONARQUBE ANALYSIS
+  # ========================================
+  sonarqube:
+    runs-on: virida-host
+    name: SonarQube Analysis
+    needs: [test-frontend, test-backend]
+    # Skip cleanly when Sonar secrets are not configured yet
+    if: ${{ secrets.SONAR_TOKEN != '' && secrets.SONAR_HOST_URL != '' }}
+
+    steps:
+    - name: Checkout code (with submodules)
+      uses: actions/checkout@v3
+      with:
+        submodules: recursive
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: npm
+        cache-dependency-path: |
+          virida_app/package-lock.json
+          virida_api/package-lock.json
+
+    - name: Install + test backend (generate coverage)
+      if: ${{ hashFiles('virida_api/package.json') != '' }}
+      working-directory: virida_api
+      env:
+        NODE_OPTIONS: --no-warnings
+      run: |
+        npm ci
+        npm test -- --ci --runInBand
+
+    - name: Install + test frontend
+      if: ${{ hashFiles('virida_app/package.json') != '' }}
+      working-directory: virida_app
+      env:
+        NODE_OPTIONS: --no-warnings
+      run: |
+        npm ci --ignore-scripts
+        npm test
+
+    - name: SonarQube scan (virida_api)
+      if: ${{ hashFiles('virida_api/package.json') != '' }}
+      uses: sonarsource/sonarqube-scan-action@v2
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+      with:
+        projectBaseDir: virida_api
+        args: >
+          -Dsonar.projectKey=virida_api
+          -Dsonar.projectName=virida_api
+          -Dsonar.sources=src
+          -Dsonar.tests=tests
+          -Dsonar.test.inclusions=tests/**/*
+          -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+          -Dsonar.sourceEncoding=UTF-8
+
+    - name: SonarQube quality gate (virida_api)
+      if: ${{ hashFiles('virida_api/package.json') != '' }}
+      uses: sonarsource/sonarqube-quality-gate-action@v1.1.0
+      timeout-minutes: 5
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+      with:
+        scanMetadataReportFile: virida_api/.scannerwork/report-task.txt
+
+    - name: SonarQube scan (virida_app)
+      if: ${{ hashFiles('virida_app/package.json') != '' }}
+      uses: sonarsource/sonarqube-scan-action@v2
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+      with:
+        projectBaseDir: virida_app
+        args: >
+          -Dsonar.projectKey=virida_app
+          -Dsonar.projectName=virida_app
+          -Dsonar.sources=src
+          -Dsonar.tests=src
+          -Dsonar.test.inclusions=src/**/*.test.ts,src/**/*.test.tsx,src/**/*.integration.test.tsx
+          -Dsonar.exclusions=dist/**,public/**,node_modules/**,**/*.d.ts
+          -Dsonar.sourceEncoding=UTF-8
+
+    - name: SonarQube quality gate (virida_app)
+      if: ${{ hashFiles('virida_app/package.json') != '' }}
+      uses: sonarsource/sonarqube-quality-gate-action@v1.1.0
+      timeout-minutes: 5
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+      with:
+        scanMetadataReportFile: virida_app/.scannerwork/report-task.txt
+
+  # ========================================
   # SUMMARY
   # ========================================
   ci-summary:
     runs-on: virida-host
     name: CI Summary
-    needs: [validate, test-frontend, test-backend, security, build]
+    needs: [validate, test-frontend, test-backend, security, build, sonarqube]
     if: always()
     
     steps:
@@ -237,11 +362,19 @@ jobs:
         echo "  [OK] Test Backend: ${{ needs.test-backend.result }}"
         echo "  [OK] Security: ${{ needs.security.result }}"
         echo "  [OK] Build: ${{ needs.build.result }}"
+        echo "  [OK] SonarQube: ${{ needs.sonarqube.result }}"
         echo ""
+        # Accept SonarQube being skipped when not configured yet
+        SONAR_OK="false"
+        if [[ "${{ needs.sonarqube.result }}" == "success" || "${{ needs.sonarqube.result }}" == "skipped" ]]; then
+          SONAR_OK="true"
+        fi
+
         if [[ "${{ needs.validate.result }}" == "success" && \
               "${{ needs.test-frontend.result }}" == "success" && \
               "${{ needs.test-backend.result }}" == "success" && \
-              "${{ needs.build.result }}" == "success" ]]; then
+              "${{ needs.build.result }}" == "success" && \
+              "${SONAR_OK}" == "true" ]]; then
           echo "[SUCCESS] All CI checks passed!"
           exit 0
         else
