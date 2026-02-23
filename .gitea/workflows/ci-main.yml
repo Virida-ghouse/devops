@@ -31,7 +31,21 @@ jobs:
       with:
         # PAT Gitea ayant accès à devops + submodules (virida_api, virida_app)
         token: ${{ secrets.GITEA }}
-        submodules: recursive
+        submodules: false
+
+    - name: Checkout virida_api
+      uses: actions/checkout@v3
+      with:
+        repository: Virida/virida_api
+        path: virida_api
+        token: ${{ secrets.GITEA }}
+
+    - name: Checkout virida_app
+      uses: actions/checkout@v3
+      with:
+        repository: Virida/virida_app
+        path: virida_app
+        token: ${{ secrets.GITEA }}
       
     - name: Validate YAML files
       run: |
@@ -77,7 +91,21 @@ jobs:
       uses: actions/checkout@v3
       with:
         token: ${{ secrets.GITEA }}
-        submodules: recursive
+        submodules: false
+
+    - name: Checkout virida_api
+      uses: actions/checkout@v3
+      with:
+        repository: Virida/virida_api
+        path: virida_api
+        token: ${{ secrets.GITEA }}
+
+    - name: Checkout virida_app
+      uses: actions/checkout@v3
+      with:
+        repository: Virida/virida_app
+        path: virida_app
+        token: ${{ secrets.GITEA }}
       
     - name: Setup Node.js
       uses: actions/setup-node@v3
@@ -130,7 +158,21 @@ jobs:
       uses: actions/checkout@v3
       with:
         token: ${{ secrets.GITEA }}
-        submodules: recursive
+        submodules: false
+
+    - name: Checkout virida_api
+      uses: actions/checkout@v3
+      with:
+        repository: Virida/virida_api
+        path: virida_api
+        token: ${{ secrets.GITEA }}
+
+    - name: Checkout virida_app
+      uses: actions/checkout@v3
+      with:
+        repository: Virida/virida_app
+        path: virida_app
+        token: ${{ secrets.GITEA }}
       
     - name: Setup Node.js
       uses: actions/setup-node@v3
@@ -184,7 +226,21 @@ jobs:
       uses: actions/checkout@v3
       with:
         token: ${{ secrets.GITEA }}
-        submodules: recursive
+        submodules: false
+
+    - name: Checkout virida_api
+      uses: actions/checkout@v3
+      with:
+        repository: Virida/virida_api
+        path: virida_api
+        token: ${{ secrets.GITEA }}
+
+    - name: Checkout virida_app
+      uses: actions/checkout@v3
+      with:
+        repository: Virida/virida_app
+        path: virida_app
+        token: ${{ secrets.GITEA }}
       
     - name: Setup Node.js
       uses: actions/setup-node@v3
@@ -220,7 +276,21 @@ jobs:
       uses: actions/checkout@v3
       with:
         token: ${{ secrets.GITEA }}
-        submodules: recursive
+        submodules: false
+
+    - name: Checkout virida_api
+      uses: actions/checkout@v3
+      with:
+        repository: Virida/virida_api
+        path: virida_api
+        token: ${{ secrets.GITEA }}
+
+    - name: Checkout virida_app
+      uses: actions/checkout@v3
+      with:
+        repository: Virida/virida_app
+        path: virida_app
+        token: ${{ secrets.GITEA }}
       
     - name: Setup Node.js
       uses: actions/setup-node@v3
@@ -262,7 +332,21 @@ jobs:
       uses: actions/checkout@v3
       with:
         token: ${{ secrets.GITEA }}
-        submodules: recursive
+        submodules: false
+
+    - name: Checkout virida_api
+      uses: actions/checkout@v3
+      with:
+        repository: Virida/virida_api
+        path: virida_api
+        token: ${{ secrets.GITEA }}
+
+    - name: Checkout virida_app
+      uses: actions/checkout@v3
+      with:
+        repository: Virida/virida_app
+        path: virida_app
+        token: ${{ secrets.GITEA }}
 
     - name: Setup Node.js
       uses: actions/setup-node@v3
