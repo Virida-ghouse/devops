@@ -30,7 +30,7 @@ jobs:
       uses: actions/checkout@v3
       with:
         # PAT Gitea ayant accès à devops + submodules (virida_api, virida_app)
-        token: ${{ secrets.GITEA_TOKEN }}
+        token: ${{ secrets.GITEA }}
         submodules: recursive
       
     - name: Validate YAML files
@@ -76,7 +76,7 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v3
       with:
-        token: ${{ secrets.GITEA_TOKEN }}
+        token: ${{ secrets.GITEA }}
         submodules: recursive
       
     - name: Setup Node.js
@@ -129,7 +129,7 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v3
       with:
-        token: ${{ secrets.GITEA_TOKEN }}
+        token: ${{ secrets.GITEA }}
         submodules: recursive
       
     - name: Setup Node.js
@@ -183,7 +183,7 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v3
       with:
-        token: ${{ secrets.GITEA_TOKEN }}
+        token: ${{ secrets.GITEA }}
         submodules: recursive
       
     - name: Setup Node.js
@@ -219,7 +219,7 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v3
       with:
-        token: ${{ secrets.GITEA_TOKEN }}
+        token: ${{ secrets.GITEA }}
         submodules: recursive
       
     - name: Setup Node.js
@@ -261,7 +261,7 @@ jobs:
     - name: Checkout code (with submodules)
       uses: actions/checkout@v3
       with:
-        token: ${{ secrets.GITEA_TOKEN }}
+        token: ${{ secrets.GITEA }}
         submodules: recursive
 
     - name: Setup Node.js
