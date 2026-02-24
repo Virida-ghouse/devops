@@ -37,6 +37,7 @@ jobs:
       uses: actions/checkout@v3
       with:
         repository: Virida/virida_api
+        ref: main
         path: virida_api
         token: ${{ secrets.GITEA }}
 
@@ -44,6 +45,7 @@ jobs:
       uses: actions/checkout@v3
       with:
         repository: Virida/virida_app
+        ref: master
         path: virida_app
         token: ${{ secrets.GITEA }}
       
@@ -97,6 +99,7 @@ jobs:
       uses: actions/checkout@v3
       with:
         repository: Virida/virida_api
+        ref: main
         path: virida_api
         token: ${{ secrets.GITEA }}
 
@@ -104,6 +107,7 @@ jobs:
       uses: actions/checkout@v3
       with:
         repository: Virida/virida_app
+        ref: master
         path: virida_app
         token: ${{ secrets.GITEA }}
       
@@ -164,6 +168,7 @@ jobs:
       uses: actions/checkout@v3
       with:
         repository: Virida/virida_api
+        ref: main
         path: virida_api
         token: ${{ secrets.GITEA }}
 
@@ -171,6 +176,7 @@ jobs:
       uses: actions/checkout@v3
       with:
         repository: Virida/virida_app
+        ref: master
         path: virida_app
         token: ${{ secrets.GITEA }}
       
@@ -232,6 +238,7 @@ jobs:
       uses: actions/checkout@v3
       with:
         repository: Virida/virida_api
+        ref: main
         path: virida_api
         token: ${{ secrets.GITEA }}
 
@@ -239,6 +246,7 @@ jobs:
       uses: actions/checkout@v3
       with:
         repository: Virida/virida_app
+        ref: master
         path: virida_app
         token: ${{ secrets.GITEA }}
       
@@ -282,6 +290,7 @@ jobs:
       uses: actions/checkout@v3
       with:
         repository: Virida/virida_api
+        ref: main
         path: virida_api
         token: ${{ secrets.GITEA }}
 
@@ -289,6 +298,7 @@ jobs:
       uses: actions/checkout@v3
       with:
         repository: Virida/virida_app
+        ref: master
         path: virida_app
         token: ${{ secrets.GITEA }}
       
@@ -338,6 +348,7 @@ jobs:
       uses: actions/checkout@v3
       with:
         repository: Virida/virida_api
+        ref: main
         path: virida_api
         token: ${{ secrets.GITEA }}
 
@@ -345,6 +356,7 @@ jobs:
       uses: actions/checkout@v3
       with:
         repository: Virida/virida_app
+        ref: master
         path: virida_app
         token: ${{ secrets.GITEA }}
 
