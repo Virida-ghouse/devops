@@ -200,7 +200,10 @@ jobs:
     - name: Install dependencies
       if: steps.check_backend.outputs.exists == 'true'
       working-directory: virida_api
-      run: npm ci
+      run: |
+        npm ci
+        export DATABASE_URL="postgresql://user:pass@localhost:5432/virida?schema=public"
+        npx prisma generate
       
     - name: Lint code
       if: steps.check_backend.outputs.exists == 'true'
@@ -383,6 +386,8 @@ jobs:
         NODE_OPTIONS: --no-warnings
       run: |
         npm ci
+        export DATABASE_URL="postgresql://user:pass@localhost:5432/virida?schema=public"
+        npx prisma generate
         npm test -- --ci --runInBand --coverage
 
     - name: Install + test frontend
