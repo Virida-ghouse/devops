@@ -16,7 +16,7 @@ jobs:
   # VALIDATION
   # ========================================
   validate:
-    runs-on: ubuntu-latest
+    runs-on: virida-host
     name: Validate Code
     
     steps:
@@ -85,7 +85,7 @@ jobs:
   # TESTS FRONTEND (virida_app)
   # ========================================
   test-frontend:
-    runs-on: ubuntu-latest
+    runs-on: virida-host
     name: Test Frontend (virida_app)
     
     steps:
@@ -159,7 +159,7 @@ jobs:
   # TESTS BACKEND (virida_api)
   # ========================================
   test-backend:
-    runs-on: ubuntu-latest
+    runs-on: virida-host
     name: Test Backend (virida_api)
     
     steps:
@@ -230,7 +230,7 @@ jobs:
   # SECURITY SCAN
   # ========================================
   security:
-    runs-on: ubuntu-latest
+    runs-on: virida-host
     name: Security Scan
     needs: [validate]
     
@@ -282,7 +282,7 @@ jobs:
   # BUILD
   # ========================================
   build:
-    runs-on: ubuntu-latest
+    runs-on: virida-host
     name: Build All
     needs: [test-frontend, test-backend]
     
@@ -338,7 +338,7 @@ jobs:
   # SONARQUBE ANALYSIS
   # ========================================
   sonarqube:
-    runs-on: ubuntu-latest
+    runs-on: virida-host
     name: SonarQube Analysis
     needs: [test-frontend, test-backend]
     # Toujours exécuter (même si le frontend échoue), et échouer clairement si secrets manquants
@@ -463,7 +463,7 @@ jobs:
   # SUMMARY
   # ========================================
   ci-summary:
-    runs-on: ubuntu-latest
+    runs-on: virida-host
     name: CI Summary
     needs: [validate, test-frontend, test-backend, security, build, sonarqube]
     if: always()
