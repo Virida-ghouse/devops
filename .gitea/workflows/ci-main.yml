@@ -136,7 +136,7 @@ jobs:
     - name: Lint code
       if: steps.check_frontend.outputs.exists == 'true'
       working-directory: virida_app
-      run: npm run lint || echo "[WARN] Linting completed with warnings"
+      run: npm run lint || true
       
     - name: Run tests
       if: steps.check_frontend.outputs.exists == 'true'
@@ -146,6 +146,7 @@ jobs:
     - name: Build
       if: steps.check_frontend.outputs.exists == 'true'
       working-directory: virida_app
+      timeout-minutes: 10
       env:
         NODE_OPTIONS: --max-old-space-size=2048 --no-warnings
       run: npm run build:simple
@@ -393,8 +394,10 @@ jobs:
     - name: Install + test frontend
       if: ${{ hashFiles('virida_app/package.json') != '' }}
       working-directory: virida_app
+      timeout-minutes: 15
       env:
         NODE_OPTIONS: --no-warnings
+        CI: "true"
       run: |
         npm ci --ignore-scripts || npm install --ignore-scripts
         npm test
