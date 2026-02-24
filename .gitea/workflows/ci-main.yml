@@ -29,25 +29,7 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v3
       with:
-        # PAT Gitea ayant accès à devops + submodules (virida_api, virida_app)
-        token: ${{ secrets.GITEA }}
-        submodules: false
-
-    - name: Checkout virida_api
-      uses: actions/checkout@v3
-      with:
-        repository: Virida/virida_api
-        ref: main
-        path: virida_api
-        token: ${{ secrets.GITEA }}
-
-    - name: Checkout virida_app
-      uses: actions/checkout@v3
-      with:
-        repository: Virida/virida_app
-        ref: master
-        path: virida_app
-        token: ${{ secrets.GITEA }}
+        submodules: recursive
       
     - name: Validate YAML files
       run: |
@@ -92,24 +74,7 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v3
       with:
-        token: ${{ secrets.GITEA }}
-        submodules: false
-
-    - name: Checkout virida_api
-      uses: actions/checkout@v3
-      with:
-        repository: Virida/virida_api
-        ref: main
-        path: virida_api
-        token: ${{ secrets.GITEA }}
-
-    - name: Checkout virida_app
-      uses: actions/checkout@v3
-      with:
-        repository: Virida/virida_app
-        ref: master
-        path: virida_app
-        token: ${{ secrets.GITEA }}
+        submodules: recursive
       
     - name: Setup Node.js
       uses: actions/setup-node@v3
@@ -131,8 +96,7 @@ jobs:
     - name: Install dependencies
       if: steps.check_frontend.outputs.exists == 'true'
       working-directory: virida_app
-      run: |
-        npm ci --ignore-scripts || npm install --ignore-scripts
+      run: npm ci --ignore-scripts
       
     - name: Lint code
       if: steps.check_frontend.outputs.exists == 'true'
@@ -142,11 +106,7 @@ jobs:
     - name: Run tests
       if: steps.check_frontend.outputs.exists == 'true'
       working-directory: virida_app
-      run: |
-        node -e "process.exit((require('./package.json').scripts||{}).test ? 0 : 1)" \
-          && npm run test \
-          || ( [ -f node_modules/.bin/vitest ] && npx vitest run ) \
-          || echo "[WARN] Aucun script de test détecté pour virida_app"
+      run: npm test
       
     - name: Build
       if: steps.check_frontend.outputs.exists == 'true'
@@ -166,24 +126,7 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v3
       with:
-        token: ${{ secrets.GITEA }}
-        submodules: false
-
-    - name: Checkout virida_api
-      uses: actions/checkout@v3
-      with:
-        repository: Virida/virida_api
-        ref: main
-        path: virida_api
-        token: ${{ secrets.GITEA }}
-
-    - name: Checkout virida_app
-      uses: actions/checkout@v3
-      with:
-        repository: Virida/virida_app
-        ref: master
-        path: virida_app
-        token: ${{ secrets.GITEA }}
+        submodules: recursive
       
     - name: Setup Node.js
       uses: actions/setup-node@v3
@@ -205,9 +148,7 @@ jobs:
     - name: Install dependencies
       if: steps.check_backend.outputs.exists == 'true'
       working-directory: virida_api
-      run: |
-        npm ci
-        npx prisma generate
+      run: npm ci
       
     - name: Lint code
       if: steps.check_backend.outputs.exists == 'true'
@@ -238,24 +179,7 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v3
       with:
-        token: ${{ secrets.GITEA }}
-        submodules: false
-
-    - name: Checkout virida_api
-      uses: actions/checkout@v3
-      with:
-        repository: Virida/virida_api
-        ref: main
-        path: virida_api
-        token: ${{ secrets.GITEA }}
-
-    - name: Checkout virida_app
-      uses: actions/checkout@v3
-      with:
-        repository: Virida/virida_app
-        ref: master
-        path: virida_app
-        token: ${{ secrets.GITEA }}
+        submodules: recursive
       
     - name: Setup Node.js
       uses: actions/setup-node@v3
@@ -290,24 +214,7 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v3
       with:
-        token: ${{ secrets.GITEA }}
-        submodules: false
-
-    - name: Checkout virida_api
-      uses: actions/checkout@v3
-      with:
-        repository: Virida/virida_api
-        ref: main
-        path: virida_api
-        token: ${{ secrets.GITEA }}
-
-    - name: Checkout virida_app
-      uses: actions/checkout@v3
-      with:
-        repository: Virida/virida_app
-        ref: master
-        path: virida_app
-        token: ${{ secrets.GITEA }}
+        submodules: recursive
       
     - name: Setup Node.js
       uses: actions/setup-node@v3
@@ -322,7 +229,7 @@ jobs:
       if: ${{ hashFiles('virida_app/package.json') != '' }}
       working-directory: virida_app
       run: |
-        npm ci --ignore-scripts || npm install --ignore-scripts
+        npm ci --ignore-scripts
         NODE_OPTIONS="--max-old-space-size=2048 --no-warnings" npm run build:simple
         echo "[OK] Frontend build successful"
         
@@ -341,7 +248,7 @@ jobs:
     runs-on: virida-host
     name: SonarQube Analysis
     needs: [test-frontend, test-backend]
-    # Toujours exécuter (même si le frontend échoue), et échouer clairement si secrets manquants
+    # Ne pas "skipper" Sonar : échouer clairement si secrets manquants
     if: ${{ always() }}
 
     steps:
@@ -355,24 +262,7 @@ jobs:
     - name: Checkout code (with submodules)
       uses: actions/checkout@v3
       with:
-        token: ${{ secrets.GITEA }}
-        submodules: false
-
-    - name: Checkout virida_api
-      uses: actions/checkout@v3
-      with:
-        repository: Virida/virida_api
-        ref: main
-        path: virida_api
-        token: ${{ secrets.GITEA }}
-
-    - name: Checkout virida_app
-      uses: actions/checkout@v3
-      with:
-        repository: Virida/virida_app
-        ref: master
-        path: virida_app
-        token: ${{ secrets.GITEA }}
+        submodules: recursive
 
     - name: Setup Node.js
       uses: actions/setup-node@v3
@@ -390,7 +280,6 @@ jobs:
         NODE_OPTIONS: --no-warnings
       run: |
         npm ci
-        npx prisma generate
         npm test -- --ci --runInBand --coverage
 
     - name: Install + test frontend
@@ -399,11 +288,8 @@ jobs:
       env:
         NODE_OPTIONS: --no-warnings
       run: |
-        npm ci --ignore-scripts || npm install --ignore-scripts
-        node -e "process.exit((require('./package.json').scripts||{}).test ? 0 : 1)" \
-          && npm run test \
-          || ( [ -f node_modules/.bin/vitest ] && npx vitest run ) \
-          || echo "[WARN] Aucun script de test détecté pour virida_app"
+        npm ci --ignore-scripts
+        npm test
 
     - name: SonarQube scan (virida_api)
       if: ${{ hashFiles('virida_api/package.json') != '' }}
