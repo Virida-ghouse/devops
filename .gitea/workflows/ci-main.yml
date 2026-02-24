@@ -340,10 +340,17 @@ jobs:
     runs-on: virida-host
     name: SonarQube Analysis
     needs: [test-frontend, test-backend]
-    # Skip cleanly when Sonar secrets are not configured yet
-    if: ${{ secrets.SONAR_TOKEN != '' && secrets.SONAR_HOST_URL != '' }}
+    # Toujours exécuter (même si le frontend échoue), et échouer clairement si secrets manquants
+    if: ${{ always() }}
 
     steps:
+    - name: Vérifier les secrets Sonar
+      run: |
+        if [ -z "${{ secrets.SONAR_TOKEN }}" ] || [ -z "${{ secrets.SONAR_HOST_URL }}" ]; then
+          echo "::error::Secrets Sonar manquants: SONAR_TOKEN et/ou SONAR_HOST_URL"
+          exit 1
+        fi
+
     - name: Checkout code (with submodules)
       uses: actions/checkout@v3
       with:
