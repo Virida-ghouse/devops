@@ -428,52 +428,40 @@ jobs:
         SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
       run: |
         set -euo pipefail
-        SONAR_HOST_URL_RAW="${SONAR_HOST_URL}"
-        SONAR_HOST_URL_RAW="${SONAR_HOST_URL_RAW%/}"
 
-        SONAR_BASE_URL="$(python3 - <<'PY'
-import json
-import os
+        SONAR_HOST_URL_CLEAN="$(python3 - <<'PY'
 import sys
-from urllib.parse import urlsplit
+from urllib.parse import urlparse, urlunparse
 
-raw = os.environ["SONAR_HOST_URL_RAW"]
-u = urlsplit(raw)
-root = f"{u.scheme}://{u.netloc}" if u.scheme and u.netloc else raw
-candidates = []
-for c in [raw, root, root + "/sonarqube", root + "/sonar"]:
-  if c and c not in candidates:
-    candidates.append(c)
-print("\n".join(candidates))
+u = urlparse(sys.argv[1].strip())
+path = u.path or ""
+
+# Common mistake: pasting a UI deep-link (/projects, /dashboard, ...)
+if path.startswith(("/projects", "/project", "/dashboard", "/sessions", "/admin")):
+  path = ""
+
+# Keep known context path if configured (rare)
+if path in ("", "/"):
+  clean = urlunparse((u.scheme, u.netloc, "", "", "", ""))
+else:
+  clean = urlunparse((u.scheme, u.netloc, path.rstrip("/"), "", "", ""))
+
+print(clean.rstrip("/"))
 PY
-)"
+"${SONAR_HOST_URL}")"
 
-        pick_base() {
-          for base in $SONAR_BASE_URL; do
-            resp="$(curl -sS --max-time 10 "${base%/}/api/system/status" || true)"
-            if echo "$resp" | python3 -c "import sys,json; s=sys.stdin.read().strip();\nimport re\n\n# accept JSON with a status field\ntry:\n  o=json.loads(s)\n  sys.exit(0 if isinstance(o,dict) and 'status' in o else 1)\nexcept Exception:\n  sys.exit(1)\n" >/dev/null 2>&1; then
-              echo "$base"
-              return 0
-            fi
-          done
-          return 1
-        }
-
-        BASE_URL="$(pick_base || true)"
-        if [ -z "${BASE_URL:-}" ]; then
-          echo "::error::SONAR_HOST_URL invalide (renvoie du HTML / pas de JSON sur /api/system/status)."
-          echo "[INFO] SONAR_HOST_URL=${SONAR_HOST_URL_RAW}"
-          echo "[INFO] Exemple attendu: https://sonar.ton-domaine.tld (sans /projects, sans path inutile)"
-          echo "[INFO] Réponse (premiers 200 chars) de ${SONAR_HOST_URL_RAW%/}/api/system/status :"
-          curl -sS --max-time 10 "${SONAR_HOST_URL_RAW%/}/api/system/status" | head -c 200 || true
-          echo
+        # Sanity check: API must answer JSON (not the HTML SPA shell)
+        statusJson="$(curl -sS -u "${SONAR_TOKEN}:" "${SONAR_HOST_URL_CLEAN}/api/system/status" || true)"
+        if echo "$statusJson" | head -n 1 | grep -qi '<!doctype html'; then
+          echo "::error::SONAR_HOST_URL invalide (tu as probablement collé une URL type /projects ou /dashboard)."
+          echo "::error::Mets SONAR_HOST_URL sur la RACINE, ex: https://ton-sonarqube.domaine"
+          echo "[DEBUG] SONAR_HOST_URL_CLEAN=${SONAR_HOST_URL_CLEAN}"
+          echo "$statusJson" | head -n 20
           exit 1
         fi
 
-        echo "[INFO] Using SonarQube base URL: ${BASE_URL}"
-
         "${SONAR_SCANNER_DIR}/bin/sonar-scanner" \
-          -Dsonar.host.url="${BASE_URL}" \
+          -Dsonar.host.url="${SONAR_HOST_URL_CLEAN}" \
           -Dsonar.token="${SONAR_TOKEN}" \
           -Dsonar.projectKey=virida_api \
           -Dsonar.projectName=virida_api \
@@ -517,7 +505,7 @@ PY
           exit 1
         fi
 
-        qg="$(curl -sS -u "${SONAR_TOKEN}:" "${BASE_URL%/}/api/qualitygates/project_status?analysisId=${analysisId}")"
+        qg="$(curl -sS -u "${SONAR_TOKEN}:" "${SONAR_HOST_URL_CLEAN}/api/qualitygates/project_status?analysisId=${analysisId}")"
         qgStatus="$(python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["projectStatus"]["status"])' <<<"$qg")"
         echo "[INFO] Quality Gate: $qgStatus"
         if [ "$qgStatus" != "OK" ]; then
@@ -535,50 +523,37 @@ PY
         SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
       run: |
         set -euo pipefail
-        SONAR_HOST_URL_RAW="${SONAR_HOST_URL}"
-        SONAR_HOST_URL_RAW="${SONAR_HOST_URL_RAW%/}"
 
-        SONAR_BASE_URL="$(python3 - <<'PY'
-import os
-from urllib.parse import urlsplit
+        SONAR_HOST_URL_CLEAN="$(python3 - <<'PY'
+import sys
+from urllib.parse import urlparse, urlunparse
 
-raw = os.environ["SONAR_HOST_URL_RAW"]
-u = urlsplit(raw)
-root = f"{u.scheme}://{u.netloc}" if u.scheme and u.netloc else raw
-candidates = []
-for c in [raw, root, root + "/sonarqube", root + "/sonar"]:
-  if c and c not in candidates:
-    candidates.append(c)
-print("\n".join(candidates))
+u = urlparse(sys.argv[1].strip())
+path = u.path or ""
+
+if path.startswith(("/projects", "/project", "/dashboard", "/sessions", "/admin")):
+  path = ""
+
+if path in ("", "/"):
+  clean = urlunparse((u.scheme, u.netloc, "", "", "", ""))
+else:
+  clean = urlunparse((u.scheme, u.netloc, path.rstrip("/"), "", "", ""))
+
+print(clean.rstrip("/"))
 PY
-)"
+"${SONAR_HOST_URL}")"
 
-        pick_base() {
-          for base in $SONAR_BASE_URL; do
-            resp="$(curl -sS --max-time 10 "${base%/}/api/system/status" || true)"
-            if echo "$resp" | python3 -c "import sys,json; s=sys.stdin.read().strip();\ntry:\n  o=json.loads(s)\n  sys.exit(0 if isinstance(o,dict) and 'status' in o else 1)\nexcept Exception:\n  sys.exit(1)\n" >/dev/null 2>&1; then
-              echo "$base"
-              return 0
-            fi
-          done
-          return 1
-        }
-
-        BASE_URL="$(pick_base || true)"
-        if [ -z "${BASE_URL:-}" ]; then
-          echo "::error::SONAR_HOST_URL invalide (renvoie du HTML / pas de JSON sur /api/system/status)."
-          echo "[INFO] SONAR_HOST_URL=${SONAR_HOST_URL_RAW}"
-          echo "[INFO] Exemple attendu: https://sonar.ton-domaine.tld (sans /projects, sans path inutile)"
-          echo "[INFO] Réponse (premiers 200 chars) de ${SONAR_HOST_URL_RAW%/}/api/system/status :"
-          curl -sS --max-time 10 "${SONAR_HOST_URL_RAW%/}/api/system/status" | head -c 200 || true
-          echo
+        statusJson="$(curl -sS -u "${SONAR_TOKEN}:" "${SONAR_HOST_URL_CLEAN}/api/system/status" || true)"
+        if echo "$statusJson" | head -n 1 | grep -qi '<!doctype html'; then
+          echo "::error::SONAR_HOST_URL invalide (tu as probablement collé une URL type /projects ou /dashboard)."
+          echo "::error::Mets SONAR_HOST_URL sur la RACINE, ex: https://ton-sonarqube.domaine"
+          echo "[DEBUG] SONAR_HOST_URL_CLEAN=${SONAR_HOST_URL_CLEAN}"
+          echo "$statusJson" | head -n 20
           exit 1
         fi
 
-        echo "[INFO] Using SonarQube base URL: ${BASE_URL}"
-
         "${SONAR_SCANNER_DIR}/bin/sonar-scanner" \
-          -Dsonar.host.url="${BASE_URL}" \
+          -Dsonar.host.url="${SONAR_HOST_URL_CLEAN}" \
           -Dsonar.token="${SONAR_TOKEN}" \
           -Dsonar.projectKey=virida_app \
           -Dsonar.projectName=virida_app \
@@ -622,7 +597,7 @@ PY
           exit 1
         fi
 
-        qg="$(curl -sS -u "${SONAR_TOKEN}:" "${BASE_URL%/}/api/qualitygates/project_status?analysisId=${analysisId}")"
+        qg="$(curl -sS -u "${SONAR_TOKEN}:" "${SONAR_HOST_URL_CLEAN}/api/qualitygates/project_status?analysisId=${analysisId}")"
         qgStatus="$(python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["projectStatus"]["status"])' <<<"$qg")"
         echo "[INFO] Quality Gate: $qgStatus"
         if [ "$qgStatus" != "OK" ]; then
