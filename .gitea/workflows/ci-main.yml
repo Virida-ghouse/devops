@@ -148,7 +148,7 @@ jobs:
       working-directory: virida_app
       timeout-minutes: 10
       env:
-        NODE_OPTIONS: --max-old-space-size=2048 --no-warnings
+        NODE_OPTIONS: --max-old-space-size=1536 --no-warnings
       run: npm run build:simple
 
   # ========================================
@@ -320,7 +320,7 @@ jobs:
       working-directory: virida_app
       run: |
         npm ci --ignore-scripts || npm install --ignore-scripts
-        NODE_OPTIONS="--max-old-space-size=2048 --no-warnings" npm run build:simple
+        NODE_OPTIONS="--max-old-space-size=1536 --no-warnings" npm run build:simple
         echo "[OK] Frontend build successful"
         
     - name: Build Backend
