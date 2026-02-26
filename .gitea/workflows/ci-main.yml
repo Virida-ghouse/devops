@@ -402,59 +402,146 @@ jobs:
         npm ci --ignore-scripts || npm install --ignore-scripts
         npm test
 
-    - name: SonarQube scan (virida_api)
+    # NOTE: The official SonarQube actions use Docker. Our runner doesn't provide
+    # a Docker daemon, so we run SonarScanner CLI directly (no Docker).
+    - name: Install SonarScanner CLI (no Docker)
+      env:
+        SONAR_SCANNER_VERSION: "8.0.1.6346"
+      run: |
+        set -euo pipefail
+        curl -sSLo /tmp/sonar-scanner.zip "https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-${SONAR_SCANNER_VERSION}-linux-x64.zip"
+        rm -rf "/tmp/sonar-scanner-${SONAR_SCANNER_VERSION}-linux-x64"
+        unzip -q /tmp/sonar-scanner.zip -d /tmp
+        echo "/tmp/sonar-scanner-${SONAR_SCANNER_VERSION}-linux-x64/bin" >> "$GITHUB_PATH"
+        sonar-scanner --version
+
+    - name: SonarQube scan + quality gate (virida_api)
       if: ${{ hashFiles('virida_api/package.json') != '' }}
-      uses: sonarsource/sonarqube-scan-action@v2
+      working-directory: virida_api
+      timeout-minutes: 10
       env:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-      with:
-        projectBaseDir: virida_api
-        args: >
-          -Dsonar.projectKey=virida_api
-          -Dsonar.projectName=virida_api
-          -Dsonar.sources=src
-          -Dsonar.tests=tests
-          -Dsonar.test.inclusions=tests/**/*
-          -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+      run: |
+        set -euo pipefail
+
+        sonar-scanner \
+          -Dsonar.host.url="${SONAR_HOST_URL}" \
+          -Dsonar.token="${SONAR_TOKEN}" \
+          -Dsonar.projectKey=virida_api \
+          -Dsonar.projectName=virida_api \
+          -Dsonar.sources=src \
+          -Dsonar.tests=tests \
+          -Dsonar.test.inclusions=tests/**/* \
+          -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
           -Dsonar.sourceEncoding=UTF-8
 
-    - name: SonarQube quality gate (virida_api)
-      if: ${{ hashFiles('virida_api/package.json') != '' }}
-      uses: sonarsource/sonarqube-quality-gate-action@v1.1.0
-      timeout-minutes: 5
-      env:
-        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-      with:
-        scanMetadataReportFile: virida_api/.scannerwork/report-task.txt
+        REPORT=".scannerwork/report-task.txt"
+        if [ ! -f "$REPORT" ]; then
+          echo "::error::Sonar report-task.txt introuvable ($REPORT)"
+          exit 1
+        fi
 
-    - name: SonarQube scan (virida_app)
+        ceTaskUrl="$(grep -E '^ceTaskUrl=' "$REPORT" | cut -d= -f2-)"
+        if [ -z "${ceTaskUrl:-}" ]; then
+          echo "::error::ceTaskUrl introuvable dans $REPORT"
+          exit 1
+        fi
+
+        echo "[INFO] Waiting for SonarQube CE task..."
+        analysisId=""
+        for i in $(seq 1 60); do
+          json="$(curl -sS -u "${SONAR_TOKEN}:" "$ceTaskUrl")"
+          status="$(python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["task"]["status"])' <<<"$json")"
+          analysisId="$(python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["task"].get("analysisId",""))' <<<"$json")"
+          if [ "$status" = "SUCCESS" ] && [ -n "$analysisId" ]; then
+            break
+          fi
+          if [ "$status" = "FAILED" ] || [ "$status" = "CANCELED" ]; then
+            echo "::error::SonarQube compute engine status=$status"
+            echo "$json"
+            exit 1
+          fi
+          sleep 2
+        done
+
+        if [ -z "$analysisId" ]; then
+          echo "::error::Timeout SonarQube: analysisId non reçu"
+          exit 1
+        fi
+
+        qg="$(curl -sS -u "${SONAR_TOKEN}:" "${SONAR_HOST_URL}/api/qualitygates/project_status?analysisId=${analysisId}")"
+        qgStatus="$(python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["projectStatus"]["status"])' <<<"$qg")"
+        echo "[INFO] Quality Gate: $qgStatus"
+        if [ "$qgStatus" != "OK" ]; then
+          echo "::error::Quality Gate FAILED: $qgStatus"
+          echo "$qg"
+          exit 1
+        fi
+
+    - name: SonarQube scan + quality gate (virida_app)
       if: ${{ hashFiles('virida_app/package.json') != '' }}
-      uses: sonarsource/sonarqube-scan-action@v2
+      working-directory: virida_app
+      timeout-minutes: 10
       env:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-      with:
-        projectBaseDir: virida_app
-        args: >
-          -Dsonar.projectKey=virida_app
-          -Dsonar.projectName=virida_app
-          -Dsonar.sources=src
-          -Dsonar.tests=src
-          -Dsonar.test.inclusions=src/**/*.test.ts,src/**/*.test.tsx,src/**/*.integration.test.tsx
-          -Dsonar.exclusions=dist/**,public/**,node_modules/**,**/*.d.ts
+      run: |
+        set -euo pipefail
+
+        sonar-scanner \
+          -Dsonar.host.url="${SONAR_HOST_URL}" \
+          -Dsonar.token="${SONAR_TOKEN}" \
+          -Dsonar.projectKey=virida_app \
+          -Dsonar.projectName=virida_app \
+          -Dsonar.sources=src \
+          -Dsonar.tests=src \
+          -Dsonar.test.inclusions=src/**/*.test.ts,src/**/*.test.tsx,src/**/*.integration.test.tsx \
+          -Dsonar.exclusions=dist/**,public/**,node_modules/**,**/*.d.ts \
           -Dsonar.sourceEncoding=UTF-8
 
-    - name: SonarQube quality gate (virida_app)
-      if: ${{ hashFiles('virida_app/package.json') != '' }}
-      uses: sonarsource/sonarqube-quality-gate-action@v1.1.0
-      timeout-minutes: 5
-      env:
-        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-      with:
-        scanMetadataReportFile: virida_app/.scannerwork/report-task.txt
+        REPORT=".scannerwork/report-task.txt"
+        if [ ! -f "$REPORT" ]; then
+          echo "::error::Sonar report-task.txt introuvable ($REPORT)"
+          exit 1
+        fi
+
+        ceTaskUrl="$(grep -E '^ceTaskUrl=' "$REPORT" | cut -d= -f2-)"
+        if [ -z "${ceTaskUrl:-}" ]; then
+          echo "::error::ceTaskUrl introuvable dans $REPORT"
+          exit 1
+        fi
+
+        echo "[INFO] Waiting for SonarQube CE task..."
+        analysisId=""
+        for i in $(seq 1 60); do
+          json="$(curl -sS -u "${SONAR_TOKEN}:" "$ceTaskUrl")"
+          status="$(python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["task"]["status"])' <<<"$json")"
+          analysisId="$(python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["task"].get("analysisId",""))' <<<"$json")"
+          if [ "$status" = "SUCCESS" ] && [ -n "$analysisId" ]; then
+            break
+          fi
+          if [ "$status" = "FAILED" ] || [ "$status" = "CANCELED" ]; then
+            echo "::error::SonarQube compute engine status=$status"
+            echo "$json"
+            exit 1
+          fi
+          sleep 2
+        done
+
+        if [ -z "$analysisId" ]; then
+          echo "::error::Timeout SonarQube: analysisId non reçu"
+          exit 1
+        fi
+
+        qg="$(curl -sS -u "${SONAR_TOKEN}:" "${SONAR_HOST_URL}/api/qualitygates/project_status?analysisId=${analysisId}")"
+        qgStatus="$(python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["projectStatus"]["status"])' <<<"$qg")"
+        echo "[INFO] Quality Gate: $qgStatus"
+        if [ "$qgStatus" != "OK" ]; then
+          echo "::error::Quality Gate FAILED: $qgStatus"
+          echo "$qg"
+          exit 1
+        fi
 
   # ========================================
   # SUMMARY
