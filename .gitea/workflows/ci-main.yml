@@ -460,9 +460,19 @@ PY
           exit 1
         fi
 
+        # SonarScanner bootstrap index must NOT return HTML. If it does, your reverse-proxy is rewriting /batch/* to index.html.
+        bootstrap="$(curl -sS -u "${SONAR_TOKEN}:" "${SONAR_HOST_URL_CLEAN}/batch/index" || true)"
+        if echo "$bootstrap" | head -n 1 | grep -qi '<!doctype html'; then
+          echo "::error::Ton SonarQube renvoie du HTML sur /batch/index (le scanner ne peut pas démarrer)."
+          echo "::error::Fix: ton proxy (nginx/clever) doit proxyfier /batch/* vers SonarQube (pas vers index.html)."
+          echo "[DEBUG] URL testée: ${SONAR_HOST_URL_CLEAN}/batch/index"
+          echo "$bootstrap" | head -n 20
+          exit 1
+        fi
+
         "${SONAR_SCANNER_DIR}/bin/sonar-scanner" \
           -Dsonar.host.url="${SONAR_HOST_URL_CLEAN}" \
-          -Dsonar.token="${SONAR_TOKEN}" \
+          -Dsonar.login="${SONAR_TOKEN}" \
           -Dsonar.projectKey=virida_api \
           -Dsonar.projectName=virida_api \
           -Dsonar.sources=src \
@@ -552,9 +562,18 @@ PY
           exit 1
         fi
 
+        bootstrap="$(curl -sS -u "${SONAR_TOKEN}:" "${SONAR_HOST_URL_CLEAN}/batch/index" || true)"
+        if echo "$bootstrap" | head -n 1 | grep -qi '<!doctype html'; then
+          echo "::error::Ton SonarQube renvoie du HTML sur /batch/index (le scanner ne peut pas démarrer)."
+          echo "::error::Fix: ton proxy (nginx/clever) doit proxyfier /batch/* vers SonarQube (pas vers index.html)."
+          echo "[DEBUG] URL testée: ${SONAR_HOST_URL_CLEAN}/batch/index"
+          echo "$bootstrap" | head -n 20
+          exit 1
+        fi
+
         "${SONAR_SCANNER_DIR}/bin/sonar-scanner" \
           -Dsonar.host.url="${SONAR_HOST_URL_CLEAN}" \
-          -Dsonar.token="${SONAR_TOKEN}" \
+          -Dsonar.login="${SONAR_TOKEN}" \
           -Dsonar.projectKey=virida_app \
           -Dsonar.projectName=virida_app \
           -Dsonar.sources=src \
