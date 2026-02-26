@@ -407,13 +407,14 @@ jobs:
     - name: Install SonarScanner CLI (no Docker)
       env:
         SONAR_SCANNER_VERSION: "8.0.1.6346"
+        SONAR_SCANNER_DIR: "/tmp/sonar-scanner"
       run: |
         set -euo pipefail
         curl -sSLo /tmp/sonar-scanner.zip "https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-${SONAR_SCANNER_VERSION}-linux-x64.zip"
-        rm -rf "/tmp/sonar-scanner-${SONAR_SCANNER_VERSION}-linux-x64"
+        rm -rf "${SONAR_SCANNER_DIR}" "/tmp/sonar-scanner-${SONAR_SCANNER_VERSION}-linux-x64"
         unzip -q /tmp/sonar-scanner.zip -d /tmp
-        echo "/tmp/sonar-scanner-${SONAR_SCANNER_VERSION}-linux-x64/bin" >> "$GITHUB_PATH"
-        sonar-scanner --version
+        mv "/tmp/sonar-scanner-${SONAR_SCANNER_VERSION}-linux-x64" "${SONAR_SCANNER_DIR}"
+        "${SONAR_SCANNER_DIR}/bin/sonar-scanner" --version
 
     - name: SonarQube scan + quality gate (virida_api)
       if: ${{ hashFiles('virida_api/package.json') != '' }}
@@ -425,7 +426,7 @@ jobs:
       run: |
         set -euo pipefail
 
-        sonar-scanner \
+        "${SONAR_SCANNER_DIR}/bin/sonar-scanner" \
           -Dsonar.host.url="${SONAR_HOST_URL}" \
           -Dsonar.token="${SONAR_TOKEN}" \
           -Dsonar.projectKey=virida_api \
@@ -489,7 +490,7 @@ jobs:
       run: |
         set -euo pipefail
 
-        sonar-scanner \
+        "${SONAR_SCANNER_DIR}/bin/sonar-scanner" \
           -Dsonar.host.url="${SONAR_HOST_URL}" \
           -Dsonar.token="${SONAR_TOKEN}" \
           -Dsonar.projectKey=virida_app \
