@@ -429,7 +429,7 @@ jobs:
       run: |
         set -euo pipefail
 
-        SONAR_HOST_URL_CLEAN="$(python3 - <<'PY'
+        SONAR_HOST_URL_CLEAN="$(python3 - "${SONAR_HOST_URL}" <<'PY'
 import sys
 from urllib.parse import urlparse, urlunparse
 
@@ -448,7 +448,7 @@ else:
 
 print(clean.rstrip("/"))
 PY
-"${SONAR_HOST_URL}")"
+)"
 
         # Sanity check: API must answer JSON (not the HTML SPA shell)
         statusJson="$(curl -sS -u "${SONAR_TOKEN}:" "${SONAR_HOST_URL_CLEAN}/api/system/status" || true)"
@@ -524,7 +524,7 @@ PY
       run: |
         set -euo pipefail
 
-        SONAR_HOST_URL_CLEAN="$(python3 - <<'PY'
+        SONAR_HOST_URL_CLEAN="$(python3 - "${SONAR_HOST_URL}" <<'PY'
 import sys
 from urllib.parse import urlparse, urlunparse
 
@@ -541,7 +541,7 @@ else:
 
 print(clean.rstrip("/"))
 PY
-"${SONAR_HOST_URL}")"
+)"
 
         statusJson="$(curl -sS -u "${SONAR_TOKEN}:" "${SONAR_HOST_URL_CLEAN}/api/system/status" || true)"
         if echo "$statusJson" | head -n 1 | grep -qi '<!doctype html'; then
