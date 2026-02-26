@@ -10,6 +10,9 @@ env:
   NODE_VERSION: '18'
   # Ensure frontend doesn't trigger expensive postinstall builds during CI installs
   NPM_CONFIG_IGNORE_SCRIPTS: 'true'
+  # SonarScanner CLI (no Docker) settings
+  SONAR_SCANNER_VERSION: "8.0.1.6346"
+  SONAR_SCANNER_DIR: "/tmp/sonar-scanner"
 
 jobs:
   # ========================================
@@ -406,8 +409,8 @@ jobs:
     # a Docker daemon, so we run SonarScanner CLI directly (no Docker).
     - name: Install SonarScanner CLI (no Docker)
       env:
-        SONAR_SCANNER_VERSION: "8.0.1.6346"
-        SONAR_SCANNER_DIR: "/tmp/sonar-scanner"
+        SONAR_SCANNER_VERSION: ${{ env.SONAR_SCANNER_VERSION }}
+        SONAR_SCANNER_DIR: ${{ env.SONAR_SCANNER_DIR }}
       run: |
         set -euo pipefail
         curl -sSLo /tmp/sonar-scanner.zip "https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-${SONAR_SCANNER_VERSION}-linux-x64.zip"
