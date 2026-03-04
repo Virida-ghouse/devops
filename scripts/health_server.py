@@ -31,6 +31,7 @@ def main():
 
 
 if __name__ == "__main__":
+    # Lightweight health endpoint used by CI/runner
     main()
 
 
