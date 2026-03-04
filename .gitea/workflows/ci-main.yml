@@ -1,9 +1,10 @@
 name: VIRIDA CI - Main Pipeline
 
-# Déclenchement sur chaque branche du repo VIRIDA
 on:
   push:
+    branches: [ master ]
   pull_request:
+    branches: [ master ]
   workflow_dispatch:
 
 env:
