@@ -10,7 +10,7 @@ import sys
 
 path = sys.argv[1]
 data = open(path, "r", encoding="utf-8", errors="ignore").read()
-data = re.sub(r"^(co-authored-by|made-with|generated-by|ai-assisted-by|assisted-by)\\s*:\\s*.*$", "", data, flags=re.I | re.M)
+data = re.sub(r"^(co-authored-by|made-with|generated-by|ai-assisted-by|assisted-by)\s*:\s*.*$", "", data, flags=re.I | re.M)
 data = re.sub(r"\n{3,}\Z", "\n\n", data, flags=re.M)
 open(path, "w", encoding="utf-8").write(data)
 PY
