@@ -9,8 +9,6 @@ on:
 
 env:
   NODE_VERSION: '18'
-  # Ensure frontend doesn't trigger expensive postinstall builds during CI installs
-  NPM_CONFIG_IGNORE_SCRIPTS: 'true'
   # SonarScanner CLI (no Docker) settings
   SONAR_SCANNER_VERSION: "8.0.1.6346"
   SONAR_SCANNER_DIR: "/tmp/sonar-scanner"
@@ -140,7 +138,7 @@ jobs:
     - name: Lint code
       if: steps.check_frontend.outputs.exists == 'true'
       working-directory: virida_app
-      run: npm run lint || true
+      run: npm run lint
       
     - name: Run tests
       if: steps.check_frontend.outputs.exists == 'true'
@@ -153,7 +151,7 @@ jobs:
       timeout-minutes: 10
       env:
         NODE_OPTIONS: --max-old-space-size=1536 --no-warnings
-      run: npm run build:simple
+      run: npm run build
 
   # ========================================
   # TESTS BACKEND (virida_api)
@@ -213,7 +211,7 @@ jobs:
     - name: Lint code
       if: steps.check_backend.outputs.exists == 'true'
       working-directory: virida_api
-      run: npm run lint || echo "[WARN] Linting completed with warnings"
+      run: npm run lint
       
     - name: Run tests
       if: steps.check_backend.outputs.exists == 'true'
@@ -225,7 +223,7 @@ jobs:
     - name: Build test
       if: steps.check_backend.outputs.exists == 'true'
       working-directory: virida_api
-      run: npm run build || echo "[INFO] Build test completed"
+      run: npm run build
 
   # ========================================
   # SECURITY SCAN
@@ -324,7 +322,7 @@ jobs:
       working-directory: virida_app
       run: |
         npm ci --ignore-scripts || npm install --ignore-scripts
-        NODE_OPTIONS="--max-old-space-size=1536 --no-warnings" npm run build:simple
+        NODE_OPTIONS="--max-old-space-size=1536 --no-warnings" npm run build
         echo "[OK] Frontend build successful"
         
     - name: Build Backend
@@ -332,7 +330,9 @@ jobs:
       working-directory: virida_api
       run: |
         npm ci
-        npm run build || echo "[INFO] Backend build completed"
+        export DATABASE_URL="postgresql://user:pass@localhost:5432/virida?schema=public"
+        npx prisma generate
+        npm run build
         echo "[OK] Backend build successful"
 
   # ========================================
@@ -430,26 +430,7 @@ jobs:
       run: |
         set -euo pipefail
 
-        SONAR_HOST_URL_CLEAN="$(python3 - "${SONAR_HOST_URL}" <<'PY'
-import sys
-from urllib.parse import urlparse, urlunparse
-
-u = urlparse(sys.argv[1].strip())
-path = u.path or ""
-
-# Common mistake: pasting a UI deep-link (/projects, /dashboard, ...)
-if path.startswith(("/projects", "/project", "/dashboard", "/sessions", "/admin")):
-  path = ""
-
-# Keep known context path if configured (rare)
-if path in ("", "/"):
-  clean = urlunparse((u.scheme, u.netloc, "", "", "", ""))
-else:
-  clean = urlunparse((u.scheme, u.netloc, path.rstrip("/"), "", "", ""))
-
-print(clean.rstrip("/"))
-PY
-)"
+        SONAR_HOST_URL_CLEAN="$(python3 -c 'import sys; from urllib.parse import urlparse, urlunparse; u=urlparse(sys.argv[1].strip()); path=u.path or \"\"; path = \"\" if path.startswith((\"/projects\",\"/project\",\"/dashboard\",\"/sessions\",\"/admin\")) else path; clean = urlunparse((u.scheme,u.netloc,\"\",\"\",\"\",\"\")) if path in (\"\",\"/\") else urlunparse((u.scheme,u.netloc,path.rstrip(\"/\"),\"\",\"\",\"\")); print(clean.rstrip(\"/\"))' "${SONAR_HOST_URL}")"
 
         # Sanity check: API must answer JSON (not the HTML SPA shell)
         statusJson="$(curl -sS -u "${SONAR_TOKEN}:" "${SONAR_HOST_URL_CLEAN}/api/system/status" || true)"
@@ -535,24 +516,7 @@ PY
       run: |
         set -euo pipefail
 
-        SONAR_HOST_URL_CLEAN="$(python3 - "${SONAR_HOST_URL}" <<'PY'
-import sys
-from urllib.parse import urlparse, urlunparse
-
-u = urlparse(sys.argv[1].strip())
-path = u.path or ""
-
-if path.startswith(("/projects", "/project", "/dashboard", "/sessions", "/admin")):
-  path = ""
-
-if path in ("", "/"):
-  clean = urlunparse((u.scheme, u.netloc, "", "", "", ""))
-else:
-  clean = urlunparse((u.scheme, u.netloc, path.rstrip("/"), "", "", ""))
-
-print(clean.rstrip("/"))
-PY
-)"
+        SONAR_HOST_URL_CLEAN="$(python3 -c 'import sys; from urllib.parse import urlparse, urlunparse; u=urlparse(sys.argv[1].strip()); path=u.path or \"\"; path = \"\" if path.startswith((\"/projects\",\"/project\",\"/dashboard\",\"/sessions\",\"/admin\")) else path; clean = urlunparse((u.scheme,u.netloc,\"\",\"\",\"\",\"\")) if path in (\"\",\"/\") else urlunparse((u.scheme,u.netloc,path.rstrip(\"/\"),\"\",\"\",\"\")); print(clean.rstrip(\"/\"))' "${SONAR_HOST_URL}")"
 
         statusJson="$(curl -sS -u "${SONAR_TOKEN}:" "${SONAR_HOST_URL_CLEAN}/api/system/status" || true)"
         if echo "$statusJson" | head -n 1 | grep -qi '<!doctype html'; then
