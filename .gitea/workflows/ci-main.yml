@@ -207,6 +207,36 @@ jobs:
         npm ci
         export DATABASE_URL="postgresql://user:pass@localhost:5432/virida?schema=public"
         npx prisma generate
+
+    - name: Ensure ESLint config (CI only)
+      if: steps.check_backend.outputs.exists == 'true'
+      working-directory: virida_api
+      run: |
+        # If the repo (e.g. mirror on Gitea) doesn't have an ESLint config yet,
+        # create a minimal one so "eslint src/" works in CI.
+        if [ ! -f "eslint.config.mjs" ] && [ ! -f ".eslintrc.cjs" ] && [ ! -f ".eslintrc.js" ] && [ ! -f ".eslintrc.json" ]; then
+          cat > .eslintrc.json << 'EOF'
+{
+  "root": true,
+  "env": {
+    "es2021": true,
+    "node": true
+  },
+  "extends": ["eslint:recommended"],
+  "parserOptions": {
+    "ecmaVersion": 2021,
+    "sourceType": "module"
+  },
+  "rules": {
+    "no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }],
+    "no-console": "off"
+  }
+}
+EOF
+          echo "[INFO] Created temporary .eslintrc.json for CI lint."
+        else
+          echo "[INFO] Existing ESLint config detected, keeping repository config."
+        fi
       
     - name: Lint code
       if: steps.check_backend.outputs.exists == 'true'
