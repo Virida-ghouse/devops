@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 env:
-  NODE_VERSION: '18'
+  NODE_VERSION: '20.19.0'
   # SonarScanner CLI (no Docker) settings
   SONAR_SCANNER_VERSION: "8.0.1.6346"
   SONAR_SCANNER_DIR: "/tmp/sonar-scanner"
