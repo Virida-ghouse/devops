@@ -430,7 +430,7 @@ jobs:
       run: |
         set -euo pipefail
 
-        SONAR_HOST_URL_CLEAN="$(python3 -c 'import sys; from urllib.parse import urlparse, urlunparse; u=urlparse(sys.argv[1].strip()); path=u.path or \"\"; path = \"\" if path.startswith((\"/projects\",\"/project\",\"/dashboard\",\"/sessions\",\"/admin\")) else path; clean = urlunparse((u.scheme,u.netloc,\"\",\"\",\"\",\"\")) if path in (\"\",\"/\") else urlunparse((u.scheme,u.netloc,path.rstrip(\"/\"),\"\",\"\",\"\")); print(clean.rstrip(\"/\"))' "${SONAR_HOST_URL}")"
+        SONAR_HOST_URL_CLEAN="$(python3 -c \"import sys; from urllib.parse import urlparse, urlunparse; u=urlparse(sys.argv[1].strip()); path=u.path or ''; path = '' if path.startswith(('/projects','/project','/dashboard','/sessions','/admin')) else path; clean = urlunparse((u.scheme,u.netloc,'','','','')) if path in ('','/') else urlunparse((u.scheme,u.netloc,path.rstrip('/'),'','','')); print(clean.rstrip('/'))\" \"${SONAR_HOST_URL}\")"
 
         # Sanity check: API must answer JSON (not the HTML SPA shell)
         statusJson="$(curl -sS -u "${SONAR_TOKEN}:" "${SONAR_HOST_URL_CLEAN}/api/system/status" || true)"
