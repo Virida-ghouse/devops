@@ -3,7 +3,7 @@ FROM sonarqube:10-community
 # Install nginx (reverse proxy) + curl
 USER root
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y nginx curl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y nginx curl postgresql-client && rm -rf /var/lib/apt/lists/*
 
 # Add Clever Cloud entrypoint and nginx config
 ADD clever-entrypoint.sh /opt/sonarqube/docker/
