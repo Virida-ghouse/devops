@@ -453,7 +453,8 @@ jobs:
           exit 1
         fi
 
-        "${SONAR_SCANNER_DIR}/bin/sonar-scanner" \
+        env -u GITHUB_ACTIONS -u GITHUB_SERVER_URL -u GITHUB_REPOSITORY -u GITHUB_SHA \
+          "${SONAR_SCANNER_DIR}/bin/sonar-scanner" \
           -Dsonar.host.url="${SONAR_HOST_URL_CLEAN}" \
           -Dsonar.login="${SONAR_TOKEN}" \
           -Dsonar.projectKey=virida_api \
@@ -537,7 +538,8 @@ jobs:
           exit 1
         fi
 
-        "${SONAR_SCANNER_DIR}/bin/sonar-scanner" \
+        env -u GITHUB_ACTIONS -u GITHUB_SERVER_URL -u GITHUB_REPOSITORY -u GITHUB_SHA \
+          "${SONAR_SCANNER_DIR}/bin/sonar-scanner" \
           -Dsonar.host.url="${SONAR_HOST_URL_CLEAN}" \
           -Dsonar.login="${SONAR_TOKEN}" \
           -Dsonar.projectKey=virida_app \
