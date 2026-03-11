@@ -1,17 +1,14 @@
 FROM sonarqube:10-community
 
-# Install nginx (reverse proxy) + curl
+# Install curl only (no nginx - SonarQube listens directly on PORT)
 USER root
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y nginx curl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 
-# Add Clever Cloud entrypoint and nginx config
+# Add Clever Cloud entrypoint
 ADD clever-entrypoint.sh /opt/sonarqube/docker/
-ADD nginx.conf /etc/nginx/nginx.conf
-
 RUN chmod +x /opt/sonarqube/docker/clever-entrypoint.sh
 
-# Entrypoint runs as root to start nginx; it starts SonarQube as sonarqube user
-# Set entrypoint
+# Run as sonarqube user (SonarQube refuses to start as root)
+USER sonarqube
 ENTRYPOINT ["/opt/sonarqube/docker/clever-entrypoint.sh"]
-

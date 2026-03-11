@@ -1,9 +1,8 @@
 #!/bin/sh
 
 # Clever Cloud SonarQube Entrypoint Script
-# - SonarQube runs on 9000 (internal)
-# - Nginx listens on PORT (8080), proxies to SonarQube, /health returns 200 immediately
-# - Set CC_HEALTH_CHECK_PATH=/health in Clever Cloud so deployment succeeds while SonarQube starts
+# SonarQube listens directly on PORT (set by Clever Cloud, default 8080)
+# SONAR_WEB_PORT is set to $PORT so no proxy needed
 
 set -eu
 
@@ -41,38 +40,14 @@ export SONAR_JDBC_USERNAME="${POSTGRES_USER}"
 export SONAR_JDBC_PASSWORD="${POSTGRES_PASSWORD}"
 export SONAR_JDBC_URL="jdbc:postgresql://${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}?sslmode=require"
 
-# SonarQube on 9000 (internal); nginx listens on PORT (8080) and proxies
-export SONAR_WEB_PORT="9000"
-export SONAR_WEB_CONTEXT="${SONAR_WEB_CONTEXT:-/}"
-
-echo "SonarQube configuration:"
-echo "  - DB: ${POSTGRES_DB} @ ${POSTGRES_HOST}:${POSTGRES_PORT}"
-echo "  - Web: internal port 9000, nginx proxy on ${PORT:-8080}"
-
-# Start SonarQube in background as sonarqube user (SonarQube refuses to run as root)
-# Write env to file and source it - avoids shell escaping issues with su -c
-# SONAR_SEARCH_JAVAOPTS: limit Elasticsearch heap to avoid OOM (exit 137) on small instances
-cat > /tmp/sonar-env.sh << ENVSCRIPT
-export SONAR_JDBC_USERNAME="${POSTGRES_USER}"
-export SONAR_JDBC_PASSWORD="${POSTGRES_PASSWORD}"
-export SONAR_JDBC_URL="jdbc:postgresql://${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}?sslmode=require"
-export SONAR_WEB_PORT="9000"
+# SonarQube listens directly on Clever Cloud's PORT (no nginx proxy)
+export SONAR_WEB_PORT="${PORT:-9000}"
 export SONAR_WEB_CONTEXT="${SONAR_WEB_CONTEXT:-/}"
 export SONAR_ES_BOOTSTRAP_CHECKS_DISABLE="${SONAR_ES_BOOTSTRAP_CHECKS_DISABLE:-true}"
 export SONAR_SEARCH_JAVAOPTS="${SONAR_SEARCH_JAVAOPTS:--Xms256m -Xmx512m}"
-ENVSCRIPT
-chmod 644 /tmp/sonar-env.sh
 
-if command -v runuser >/dev/null 2>&1; then
-  runuser -u sonarqube -- sh -c '. /tmp/sonar-env.sh && exec /opt/sonarqube/docker/entrypoint.sh' &
-else
-  su sonarqube -c '. /tmp/sonar-env.sh && exec /opt/sonarqube/docker/entrypoint.sh' &
-fi
-echo "[SonarQube] Started in background (PID $!)"
+echo "SonarQube configuration:"
+echo "  - DB: ${POSTGRES_DB} @ ${POSTGRES_HOST}:${POSTGRES_PORT}"
+echo "  - Web port: ${SONAR_WEB_PORT}"
 
-# Give SonarQube a moment to begin startup
-sleep 5
-
-# Start nginx in foreground (listens on 8080, /health returns 200 immediately)
-exec nginx -g "daemon off;"
-
+exec /opt/sonarqube/docker/entrypoint.sh
