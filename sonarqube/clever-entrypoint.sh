@@ -49,16 +49,6 @@ echo "SonarQube configuration:"
 echo "  - DB: ${POSTGRES_DB} @ ${POSTGRES_HOST}:${POSTGRES_PORT}"
 echo "  - Web: internal port 9000, nginx proxy on ${PORT:-8080}"
 
-# Reset admin password if SONAR_ADMIN_RESET_HASH is set (BCrypt hash of desired password)
-if [ -n "${SONAR_ADMIN_RESET_HASH:-}" ]; then
-  echo "[INIT] Resetting admin password via psql..."
-  PGPASSWORD="${POSTGRES_PASSWORD}" psql \
-    -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" \
-    -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" \
-    -c "UPDATE users SET crypted_password='${SONAR_ADMIN_RESET_HASH}', salt=NULL, hash_method='BCRYPT', reset_password=false WHERE login='admin';" \
-    2>&1 && echo "[INIT] Admin password reset done." || echo "[INIT] WARN: password reset failed (non-fatal)."
-fi
-
 # Start SonarQube in background as sonarqube user (SonarQube refuses to run as root)
 # Write env to file and source it - avoids shell escaping issues with su -c
 # SONAR_SEARCH_JAVAOPTS: limit Elasticsearch heap to avoid OOM (exit 137) on small instances
