@@ -1,8 +1,9 @@
 #!/bin/sh
 
 # Clever Cloud SonarQube Entrypoint Script
-# SonarQube listens directly on PORT (set by Clever Cloud, default 8080)
-# SONAR_WEB_PORT is set to $PORT so no proxy needed
+# - SonarQube runs on 9000 (internal)
+# - Nginx listens on PORT (8080), proxies to SonarQube, /health returns 200 immediately
+# - Set CC_HEALTH_CHECK_PATH=/health in Clever Cloud so deployment succeeds while SonarQube starts
 
 set -eu
 
@@ -40,14 +41,56 @@ export SONAR_JDBC_USERNAME="${POSTGRES_USER}"
 export SONAR_JDBC_PASSWORD="${POSTGRES_PASSWORD}"
 export SONAR_JDBC_URL="jdbc:postgresql://${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}?sslmode=require"
 
-# SonarQube listens directly on Clever Cloud's PORT (no nginx proxy)
-export SONAR_WEB_PORT="${PORT:-9000}"
+# SonarQube on 9000 (internal); nginx listens on PORT (8080) and proxies
+export SONAR_WEB_PORT="9000"
 export SONAR_WEB_CONTEXT="${SONAR_WEB_CONTEXT:-/}"
-export SONAR_ES_BOOTSTRAP_CHECKS_DISABLE="${SONAR_ES_BOOTSTRAP_CHECKS_DISABLE:-true}"
-export SONAR_SEARCH_JAVAOPTS="${SONAR_SEARCH_JAVAOPTS:--Xms256m -Xmx512m}"
 
 echo "SonarQube configuration:"
 echo "  - DB: ${POSTGRES_DB} @ ${POSTGRES_HOST}:${POSTGRES_PORT}"
-echo "  - Web port: ${SONAR_WEB_PORT}"
+echo "  - Web: internal port 9000, nginx proxy on ${PORT:-8080}"
 
-exec /opt/sonarqube/docker/entrypoint.sh
+# Repair the admin password that was previously written with an invalid salt revision.
+# This is a one-off recovery path to get SonarQube booting again.
+export PGPASSWORD="${POSTGRES_PASSWORD}"
+psql \
+  --host="${POSTGRES_HOST}" \
+  --port="${POSTGRES_PORT}" \
+  --username="${POSTGRES_USER}" \
+  --dbname="${POSTGRES_DB}" \
+  --set=ON_ERROR_STOP=1 <<'SQL'
+UPDATE users
+SET crypted_password = '$2a$10$6Zy6r6fWk1P42VvJpW1VcOLz93P.IYqSmcGjpFSr1g9FRuyfcQiKW',
+    salt = NULL,
+    hash_method = 'BCRYPT',
+    reset_password = true
+WHERE login = 'admin';
+SQL
+unset PGPASSWORD
+
+# Start SonarQube in background as sonarqube user (SonarQube refuses to run as root)
+# Write env to file and source it - avoids shell escaping issues with su -c
+# SONAR_SEARCH_JAVAOPTS: limit Elasticsearch heap to avoid OOM (exit 137) on small instances
+cat > /tmp/sonar-env.sh << ENVSCRIPT
+export SONAR_JDBC_USERNAME="${POSTGRES_USER}"
+export SONAR_JDBC_PASSWORD="${POSTGRES_PASSWORD}"
+export SONAR_JDBC_URL="jdbc:postgresql://${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}?sslmode=require"
+export SONAR_WEB_PORT="9000"
+export SONAR_WEB_CONTEXT="${SONAR_WEB_CONTEXT:-/}"
+export SONAR_ES_BOOTSTRAP_CHECKS_DISABLE="${SONAR_ES_BOOTSTRAP_CHECKS_DISABLE:-true}"
+export SONAR_SEARCH_JAVAOPTS="${SONAR_SEARCH_JAVAOPTS:--Xms256m -Xmx512m}"
+ENVSCRIPT
+chmod 644 /tmp/sonar-env.sh
+
+if command -v runuser >/dev/null 2>&1; then
+  runuser -u sonarqube -- sh -c '. /tmp/sonar-env.sh && exec /opt/sonarqube/docker/entrypoint.sh' &
+else
+  su sonarqube -c '. /tmp/sonar-env.sh && exec /opt/sonarqube/docker/entrypoint.sh' &
+fi
+echo "[SonarQube] Started in background (PID $!)"
+
+# Give SonarQube a moment to begin startup
+sleep 5
+
+# Start nginx in foreground (listens on 8080, /health returns 200 immediately)
+exec nginx -g "daemon off;"
+

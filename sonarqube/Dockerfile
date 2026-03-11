@@ -1,14 +1,17 @@
 FROM sonarqube:10-community
 
-# Install curl only (no nginx - SonarQube listens directly on PORT)
+# Install nginx (reverse proxy), curl, and psql client for recovery
 USER root
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y nginx curl postgresql-client && rm -rf /var/lib/apt/lists/*
 
-# Add Clever Cloud entrypoint
+# Add Clever Cloud entrypoint and nginx config
 ADD clever-entrypoint.sh /opt/sonarqube/docker/
+ADD nginx.conf /etc/nginx/nginx.conf
+
 RUN chmod +x /opt/sonarqube/docker/clever-entrypoint.sh
 
-# Run as sonarqube user (SonarQube refuses to start as root)
-USER sonarqube
+# Entrypoint runs as root to start nginx; it starts SonarQube as sonarqube user
+# Set entrypoint
 ENTRYPOINT ["/opt/sonarqube/docker/clever-entrypoint.sh"]
+
