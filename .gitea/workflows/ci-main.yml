@@ -226,6 +226,52 @@ jobs:
       run: npm run build
 
   # ========================================
+  # SONARQUBE ANALYSIS (virida_api)
+  # ========================================
+  sonar-backend:
+    runs-on: virida-host
+    name: SonarQube Backend
+    needs: [test-backend]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+
+    - name: Check virida_api exists
+      id: check_api
+      run: |
+        if [ -d "virida_api" ] && [ -f "virida_api/package.json" ]; then
+          echo "exists=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "exists=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Install and run tests with coverage
+      if: steps.check_api.outputs.exists == 'true'
+      working-directory: virida_api
+      run: |
+        npm ci
+        npm test -- --coverage || echo "[WARN] Tests completed with warnings"
+
+    - name: Run SonarQube scan
+      if: steps.check_api.outputs.exists == 'true'
+      working-directory: virida_api
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+      run: |
+        if [ -z "$SONAR_TOKEN" ] || [ -z "$SONAR_HOST_URL" ]; then
+          echo "[WARN] SONAR_TOKEN or SONAR_HOST_URL not set, skipping SonarQube scan"
+          exit 0
+        fi
+        npm run sonar || echo "[WARN] SonarQube scan completed with warnings"
+
+  # ========================================
   # SECURITY SCAN
   # ========================================
   security:
