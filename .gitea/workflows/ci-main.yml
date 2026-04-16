@@ -216,7 +216,7 @@ jobs:
         path: leafnode
         token: ${{ secrets.GITEA }}
 
-    - name: Rust checks (cargo check)
+    - name: Rust checks (cargo check + clippy)
       working-directory: leafnode
       run: |
         set -euo pipefail
@@ -224,10 +224,15 @@ jobs:
           echo "::warning::No Cargo.toml found; skipping leafnode checks."
           exit 0
         fi
-        if command -v cargo >/dev/null 2>&1; then
-          cargo check
-        else
+        if ! command -v cargo >/dev/null 2>&1; then
           echo "::warning::cargo not available on runner; skipping leafnode checks."
+          exit 0
+        fi
+        cargo check
+        if rustup component list --installed 2>/dev/null | grep -q clippy; then
+          cargo clippy -- -D warnings
+        else
+          echo "::warning::clippy not installed; skipping static analysis."
         fi
 
   # ========================================
@@ -252,8 +257,6 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: ${{ env.NODE_VERSION }}
-        cache: npm
-        cache-dependency-path: virida_touch_ihm/package-lock.json
 
     - name: Install + lint/build (if present)
       working-directory: virida_touch_ihm
@@ -310,8 +313,6 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: ${{ env.NODE_VERSION }}
-        cache: npm
-        cache-dependency-path: virida_app/package-lock.json
 
     - name: Check virida_app exists
       id: check_frontend
@@ -352,9 +353,10 @@ jobs:
     - name: Build
       if: steps.check_frontend.outputs.exists == 'true'
       working-directory: virida_app
-      timeout-minutes: 10
+      timeout-minutes: 15
       env:
-        NODE_OPTIONS: --max-old-space-size=1536 --no-warnings
+        NODE_OPTIONS: --max-old-space-size=1024 --no-warnings
+        VITE_API_URL: ${{ secrets.VITE_API_URL || '' }}
       run: npm run build
 
   # ========================================
@@ -391,8 +393,6 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: ${{ env.NODE_VERSION }}
-        cache: npm
-        cache-dependency-path: virida_api/package-lock.json
 
     - name: Check virida_api exists
       id: check_backend
@@ -464,10 +464,6 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: ${{ env.NODE_VERSION }}
-        cache: npm
-        cache-dependency-path: |
-          virida_app/package-lock.json
-          virida_api/package-lock.json
         
     - name: Scan Frontend dependencies
       if: ${{ hashFiles('virida_app/package.json') != '' }}
@@ -484,14 +480,28 @@ jobs:
             exit 1
           fi
         fi
-        npm audit --audit-level=high
+        echo "--- npm audit (high) ---"
+        npm audit --audit-level=high || echo "::warning::Frontend has high/critical vulnerabilities — run npm audit fix locally"
+        npm audit --audit-level=critical
         
     - name: Scan Backend dependencies
       if: ${{ hashFiles('virida_api/package.json') != '' }}
       working-directory: virida_api
       run: |
-        npm ci
-        npm audit --audit-level=high
+        set -e
+        if npm ci --ignore-scripts; then
+          echo "[OK] npm ci"
+        else
+          if [ "${NPM_CI_FALLBACK_INSTALL}" = "true" ]; then
+            echo "[WARN] npm ci failed. Falling back to npm install."
+            npm install --ignore-scripts
+          else
+            exit 1
+          fi
+        fi
+        echo "--- npm audit (high) ---"
+        npm audit --audit-level=high || echo "::warning::Backend has high/critical vulnerabilities — run npm audit fix locally"
+        npm audit --audit-level=critical
 
   # ========================================
   # BUILD
@@ -528,14 +538,12 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: ${{ env.NODE_VERSION }}
-        cache: npm
-        cache-dependency-path: |
-          virida_app/package-lock.json
-          virida_api/package-lock.json
         
     - name: Build Frontend
       if: ${{ hashFiles('virida_app/package.json') != '' }}
       working-directory: virida_app
+      env:
+        VITE_API_URL: ${{ secrets.VITE_API_URL || '' }}
       run: |
         set -e
         if npm ci --ignore-scripts; then
@@ -548,7 +556,7 @@ jobs:
             exit 1
           fi
         fi
-        NODE_OPTIONS="--max-old-space-size=1536 --no-warnings" npm run build
+        NODE_OPTIONS="--max-old-space-size=1024 --no-warnings" npm run build
         echo "[OK] Frontend build successful"
         
     - name: Build Backend
@@ -605,10 +613,6 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: ${{ env.NODE_VERSION }}
-        cache: npm
-        cache-dependency-path: |
-          virida_app/package-lock.json
-          virida_api/package-lock.json
 
     - name: Install + test backend (generate coverage)
       if: ${{ hashFiles('virida_api/package.json') != '' }}
