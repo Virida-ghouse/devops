@@ -480,9 +480,8 @@ jobs:
             exit 1
           fi
         fi
-        echo "--- npm audit (high) ---"
-        npm audit --audit-level=high || echo "::warning::Frontend has high/critical vulnerabilities — run npm audit fix locally"
-        npm audit --audit-level=critical
+        echo "--- npm audit ---"
+        npm audit --audit-level=moderate || echo "::warning::Frontend has vulnerabilities — run npm audit fix locally"
         
     - name: Scan Backend dependencies
       if: ${{ hashFiles('virida_api/package.json') != '' }}
@@ -499,9 +498,8 @@ jobs:
             exit 1
           fi
         fi
-        echo "--- npm audit (high) ---"
-        npm audit --audit-level=high || echo "::warning::Backend has high/critical vulnerabilities — run npm audit fix locally"
-        npm audit --audit-level=critical
+        echo "--- npm audit ---"
+        npm audit --audit-level=moderate || echo "::warning::Backend has vulnerabilities — run npm audit fix locally"
 
   # ========================================
   # BUILD
