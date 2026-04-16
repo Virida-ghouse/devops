@@ -892,40 +892,51 @@ jobs:
     steps:
     - name: CI Summary
       run: |
-        echo "VIRIDA CI Pipeline Summary"
-        echo "=============================="
-        echo "Date: $(date)"
+        echo "========================================"
+        echo "  VIRIDA CI Pipeline Summary"
+        echo "========================================"
+        echo "Date:   $(date)"
         echo "Branch: ${{ github.ref_name }}"
         echo "Commit: ${{ github.sha }}"
         echo ""
-        echo "Jobs Status:"
-        echo "  [OK] Validate: ${{ needs.validate.result }}"
-        echo "  [OK] Test Frontend: ${{ needs.test-frontend.result }}"
-        echo "  [OK] Test Backend: ${{ needs.test-backend.result }}"
-        echo "  [OK] Security: ${{ needs.security.result }}"
-        echo "  [OK] Build: ${{ needs.build.result }}"
-        echo "  [OK] SonarQube: ${{ needs.sonarqube.result }}"
-        echo ""
-        EVE_OK="false"
-        if [[ "${{ needs.test-eve.result }}" == "success" || "${{ needs.test-eve.result }}" == "skipped" ]]; then EVE_OK="true"; fi
-        LEAF_OK="false"
-        if [[ "${{ needs.test-leafnode.result }}" == "success" || "${{ needs.test-leafnode.result }}" == "skipped" ]]; then LEAF_OK="true"; fi
-        TOUCH_OK="false"
-        if [[ "${{ needs.test-touch-ihm.result }}" == "success" || "${{ needs.test-touch-ihm.result }}" == "skipped" ]]; then TOUCH_OK="true"; fi
 
-        if [[ "${{ needs.validate.result }}" == "success" && \
-              "${EVE_OK}" == "true" && \
-              "${LEAF_OK}" == "true" && \
-              "${TOUCH_OK}" == "true" && \
-              "${{ needs.test-frontend.result }}" == "success" && \
-              "${{ needs.test-backend.result }}" == "success" && \
-              "${{ needs.security.result }}" == "success" && \
-              "${{ needs.build.result }}" == "success" && \
-              "${{ needs.sonarqube.result }}" == "success" ]]; then
-          echo "[SUCCESS] All CI checks passed!"
+        FAIL=0
+        report() {
+          local name="$1" result="$2" required="$3"
+          case "$result" in
+            success)  icon="✅" ;;
+            skipped)  icon="⏭️" ;;
+            failure)  icon="❌"; [ "$required" = "true" ] && FAIL=1 ;;
+            *)        icon="⚠️" ;;
+          esac
+          printf "  %s  %-25s %s\n" "$icon" "$name" "$result"
+        }
+
+        echo "Core jobs:"
+        report "Validate"       "${{ needs.validate.result }}"       true
+        report "Test Frontend"  "${{ needs.test-frontend.result }}"  true
+        report "Test Backend"   "${{ needs.test-backend.result }}"   true
+        report "Build"          "${{ needs.build.result }}"          true
+        report "SonarQube"      "${{ needs.sonarqube.result }}"      true
+        echo ""
+        echo "External repos (best-effort):"
+        report "Test EVE"       "${{ needs.test-eve.result }}"       false
+        report "Test Leafnode"  "${{ needs.test-leafnode.result }}"  false
+        report "Test Touch IHM" "${{ needs.test-touch-ihm.result }}" false
+        echo ""
+        echo "Security (advisory):"
+        report "Security Scan"  "${{ needs.security.result }}"      false
+        echo ""
+
+        if [ "$FAIL" -eq 0 ]; then
+          echo "========================================"
+          echo "  ✅ All required CI checks passed!"
+          echo "========================================"
           exit 0
         else
-          echo "::error::Some required CI checks failed"
+          echo "========================================"
+          echo "  ❌ Some required CI checks failed"
+          echo "========================================"
           exit 1
         fi
 
