@@ -12,6 +12,10 @@ env:
   # SonarScanner CLI (no Docker) settings
   SONAR_SCANNER_VERSION: "8.0.1.6346"
   SONAR_SCANNER_DIR: "/tmp/sonar-scanner"
+  # Avoid npm lockfile drift causing flaky CI:
+  # if npm ci fails because package-lock is out of sync, we fall back to npm install
+  # and still run the job (lint/tests/build). Keep this true until lockfiles are fixed.
+  NPM_CI_FALLBACK_INSTALL: "true"
 
 jobs:
   # ========================================
@@ -29,13 +33,13 @@ jobs:
         echo "👤 Auteur: ${{ github.actor }}"
     
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         token: ${{ secrets.GITEA }}
         submodules: false
 
     - name: Checkout virida_api
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         repository: Virida/virida_api
         ref: main
@@ -43,7 +47,7 @@ jobs:
         token: ${{ secrets.GITEA }}
 
     - name: Checkout virida_app
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         repository: Virida/virida_app
         ref: master
@@ -83,6 +87,196 @@ jobs:
         echo "[OK] All JSON files are valid"
 
   # ========================================
+  # TESTS EVE (virida_eve - Python) [external repo]
+  # ========================================
+  test-eve:
+    runs-on: virida-host
+    name: Test EVE (virida_eve)
+    needs: [validate]
+    if: ${{ secrets.GITEA != '' }}
+
+    steps:
+    - name: Checkout virida_eve
+      uses: actions/checkout@v4
+      with:
+        repository: Virida/virida-eve
+        ref: main
+        path: virida_eve
+        token: ${{ secrets.GITEA }}
+
+    - name: Python syntax/compile checks
+      working-directory: virida_eve
+      run: |
+        set -euo pipefail
+        if command -v python3 >/dev/null 2>&1; then
+          python3 -m compileall .
+        else
+          echo "::warning::python3 not available on runner; skipping virida_eve checks."
+        fi
+
+    - name: Docker sanity checks (compose + build)
+      working-directory: virida_eve
+      run: |
+        set -euo pipefail
+        if ! command -v docker >/dev/null 2>&1; then
+          echo "::warning::docker not available on runner; skipping Docker checks for virida-eve."
+          exit 0
+        fi
+        if ! docker info >/dev/null 2>&1; then
+          echo "::warning::docker daemon not reachable; skipping Docker checks for virida-eve."
+          exit 0
+        fi
+
+        if [ -f "docker-compose.yml" ] || [ -f "docker-compose.yaml" ] || [ -f "compose.yml" ] || [ -f "compose.yaml" ]; then
+          if docker compose version >/dev/null 2>&1; then
+            docker compose config >/dev/null
+          else
+            echo "::warning::docker compose not available; skipping compose validation."
+          fi
+        fi
+
+        if [ -f "Dockerfile" ]; then
+          docker build -t "virida-eve:ci" .
+        else
+          echo "::warning::No Dockerfile found; skipping docker build."
+        fi
+
+    - name: RAG benchmark (if present)
+      working-directory: virida_eve
+      run: |
+        set -euo pipefail
+        if ! command -v python3 >/dev/null 2>&1; then
+          echo "::warning::python3 not available; skipping RAG benchmark."
+          exit 0
+        fi
+
+        # Heuristic: run a benchmark script if the repo provides one.
+        # We keep this best-effort (won't fail CI if optional benchmark is missing).
+        if [ -f "benchmark/run_benchmark.py" ]; then
+          python3 benchmark/run_benchmark.py || echo "::warning::RAG benchmark failed"
+        elif [ -f "benchmarks/run.py" ]; then
+          python3 benchmarks/run.py || echo "::warning::RAG benchmark failed"
+        elif [ -f "rag/benchmark.py" ]; then
+          python3 rag/benchmark.py || echo "::warning::RAG benchmark failed"
+        else
+          echo "[INFO] No benchmark entrypoint found; skipping."
+        fi
+
+    - name: Build & push virida-eve image (optional)
+      working-directory: virida_eve
+      env:
+        EVE_IMAGE_PUSH_ENABLED: ${{ secrets.EVE_IMAGE_PUSH_ENABLED }}
+        EVE_REGISTRY: ${{ secrets.EVE_REGISTRY }}
+        EVE_IMAGE_NAME: ${{ secrets.EVE_IMAGE_NAME }}
+        EVE_REGISTRY_USERNAME: ${{ secrets.EVE_REGISTRY_USERNAME }}
+        EVE_REGISTRY_PASSWORD: ${{ secrets.EVE_REGISTRY_PASSWORD }}
+      run: |
+        set -euo pipefail
+        if [ "${EVE_IMAGE_PUSH_ENABLED:-}" != "true" ]; then
+          echo "[INFO] Image push disabled (set secret EVE_IMAGE_PUSH_ENABLED=true to enable)."
+          exit 0
+        fi
+        if [ -z "${EVE_REGISTRY:-}" ] || [ -z "${EVE_IMAGE_NAME:-}" ] || [ -z "${EVE_REGISTRY_USERNAME:-}" ] || [ -z "${EVE_REGISTRY_PASSWORD:-}" ]; then
+          echo "::error::Missing registry secrets for image push (EVE_REGISTRY, EVE_IMAGE_NAME, EVE_REGISTRY_USERNAME, EVE_REGISTRY_PASSWORD)."
+          exit 1
+        fi
+        if ! command -v docker >/dev/null 2>&1; then
+          echo "::error::docker not available on runner; cannot push image."
+          exit 1
+        fi
+        if ! docker info >/dev/null 2>&1; then
+          echo "::error::docker daemon not reachable; cannot push image."
+          exit 1
+        fi
+        if [ ! -f "Dockerfile" ]; then
+          echo "::error::No Dockerfile found; cannot build/push image."
+          exit 1
+        fi
+
+        IMAGE_TAG="${EVE_REGISTRY}/${EVE_IMAGE_NAME}:${GITHUB_SHA}"
+        echo "${EVE_REGISTRY_PASSWORD}" | docker login "${EVE_REGISTRY}" -u "${EVE_REGISTRY_USERNAME}" --password-stdin
+        docker build -t "${IMAGE_TAG}" .
+        docker push "${IMAGE_TAG}"
+
+  # ========================================
+  # TESTS LEAFNODE (leafnode - Rust) [external repo]
+  # ========================================
+  test-leafnode:
+    runs-on: virida-host
+    name: Test Leafnode (leafnode)
+    needs: [validate]
+    if: ${{ secrets.GITEA != '' }}
+
+    steps:
+    - name: Checkout leafnode
+      uses: actions/checkout@v4
+      with:
+        repository: Virida/leafnode
+        ref: main
+        path: leafnode
+        token: ${{ secrets.GITEA }}
+
+    - name: Rust checks (cargo check)
+      working-directory: leafnode
+      run: |
+        set -euo pipefail
+        if [ ! -f "Cargo.toml" ]; then
+          echo "::warning::No Cargo.toml found; skipping leafnode checks."
+          exit 0
+        fi
+        if command -v cargo >/dev/null 2>&1; then
+          cargo check
+        else
+          echo "::warning::cargo not available on runner; skipping leafnode checks."
+        fi
+
+  # ========================================
+  # TESTS TOUCH IHM (virida_touch_ihm - Node/React) [external repo]
+  # ========================================
+  test-touch-ihm:
+    runs-on: virida-host
+    name: Test Touch IHM (virida_touch_ihm)
+    needs: [validate]
+    if: ${{ secrets.GITEA != '' }}
+
+    steps:
+    - name: Checkout virida_touch_ihm
+      uses: actions/checkout@v4
+      with:
+        repository: Virida/virida_touch_ihm
+        ref: main
+        path: virida_touch_ihm
+        token: ${{ secrets.GITEA }}
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: npm
+        cache-dependency-path: virida_touch_ihm/package-lock.json
+
+    - name: Install + lint/build (if present)
+      working-directory: virida_touch_ihm
+      run: |
+        set -euo pipefail
+        if [ ! -f "package.json" ]; then
+          echo "::warning::No package.json found; skipping virida_touch_ihm."
+          exit 0
+        fi
+        if npm ci --ignore-scripts; then
+          echo "[OK] npm ci"
+        else
+          if [ "${NPM_CI_FALLBACK_INSTALL}" = "true" ]; then
+            echo "[WARN] npm ci failed (lockfile mismatch). Falling back to npm install."
+            npm install --ignore-scripts
+          else
+            exit 1
+          fi
+        fi
+        npm run -s lint || echo "::warning::No lint script (or lint failed)"
+        npm run -s build || echo "::warning::No build script (or build failed)"
+
+  # ========================================
   # TESTS FRONTEND (virida_app)
   # ========================================
   test-frontend:
@@ -91,13 +285,13 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         token: ${{ secrets.GITEA }}
         submodules: false
 
     - name: Checkout virida_api
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         repository: Virida/virida_api
         ref: main
@@ -105,7 +299,7 @@ jobs:
         token: ${{ secrets.GITEA }}
 
     - name: Checkout virida_app
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         repository: Virida/virida_app
         ref: master
@@ -113,7 +307,7 @@ jobs:
         token: ${{ secrets.GITEA }}
       
     - name: Setup Node.js
-      uses: actions/setup-node@v3
+      uses: actions/setup-node@v4
       with:
         node-version: ${{ env.NODE_VERSION }}
         cache: npm
@@ -133,7 +327,17 @@ jobs:
       if: steps.check_frontend.outputs.exists == 'true'
       working-directory: virida_app
       run: |
-        npm ci --ignore-scripts || npm install --ignore-scripts
+        set -e
+        if npm ci --ignore-scripts; then
+          echo "[OK] npm ci"
+        else
+          if [ "${NPM_CI_FALLBACK_INSTALL}" = "true" ]; then
+            echo "[WARN] npm ci failed (lockfile mismatch). Falling back to npm install."
+            npm install --ignore-scripts
+          else
+            exit 1
+          fi
+        fi
       
     - name: Lint code
       if: steps.check_frontend.outputs.exists == 'true'
@@ -162,13 +366,13 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         token: ${{ secrets.GITEA }}
         submodules: false
 
     - name: Checkout virida_api
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         repository: Virida/virida_api
         ref: main
@@ -176,7 +380,7 @@ jobs:
         token: ${{ secrets.GITEA }}
 
     - name: Checkout virida_app
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         repository: Virida/virida_app
         ref: master
@@ -184,7 +388,7 @@ jobs:
         token: ${{ secrets.GITEA }}
       
     - name: Setup Node.js
-      uses: actions/setup-node@v3
+      uses: actions/setup-node@v4
       with:
         node-version: ${{ env.NODE_VERSION }}
         cache: npm
@@ -226,52 +430,6 @@ jobs:
       run: npm run build
 
   # ========================================
-  # SONARQUBE ANALYSIS (virida_api)
-  # ========================================
-  sonar-backend:
-    runs-on: virida-host
-    name: SonarQube Backend
-    needs: [test-backend]
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
-
-    - name: Setup Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: ${{ env.NODE_VERSION }}
-
-    - name: Check virida_api exists
-      id: check_api
-      run: |
-        if [ -d "virida_api" ] && [ -f "virida_api/package.json" ]; then
-          echo "exists=true" >> "$GITHUB_OUTPUT"
-        else
-          echo "exists=false" >> "$GITHUB_OUTPUT"
-        fi
-
-    - name: Install and run tests with coverage
-      if: steps.check_api.outputs.exists == 'true'
-      working-directory: virida_api
-      run: |
-        npm ci
-        npm test -- --coverage || echo "[WARN] Tests completed with warnings"
-
-    - name: Run SonarQube scan
-      if: steps.check_api.outputs.exists == 'true'
-      working-directory: virida_api
-      env:
-        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-      run: |
-        if [ -z "$SONAR_TOKEN" ] || [ -z "$SONAR_HOST_URL" ]; then
-          echo "[WARN] SONAR_TOKEN or SONAR_HOST_URL not set, skipping SonarQube scan"
-          exit 0
-        fi
-        npm run sonar || echo "[WARN] SonarQube scan completed with warnings"
-
-  # ========================================
   # SECURITY SCAN
   # ========================================
   security:
@@ -281,13 +439,13 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         token: ${{ secrets.GITEA }}
         submodules: false
 
     - name: Checkout virida_api
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         repository: Virida/virida_api
         ref: main
@@ -295,7 +453,7 @@ jobs:
         token: ${{ secrets.GITEA }}
 
     - name: Checkout virida_app
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         repository: Virida/virida_app
         ref: master
@@ -303,7 +461,7 @@ jobs:
         token: ${{ secrets.GITEA }}
       
     - name: Setup Node.js
-      uses: actions/setup-node@v3
+      uses: actions/setup-node@v4
       with:
         node-version: ${{ env.NODE_VERSION }}
         cache: npm
@@ -315,13 +473,25 @@ jobs:
       if: ${{ hashFiles('virida_app/package.json') != '' }}
       working-directory: virida_app
       run: |
-        npm audit --audit-level=moderate || echo "[WARN] Security vulnerabilities found in virida_app"
+        set -e
+        if npm ci --ignore-scripts; then
+          echo "[OK] npm ci"
+        else
+          if [ "${NPM_CI_FALLBACK_INSTALL}" = "true" ]; then
+            echo "[WARN] npm ci failed (lockfile mismatch). Falling back to npm install."
+            npm install --ignore-scripts
+          else
+            exit 1
+          fi
+        fi
+        npm audit --audit-level=high
         
     - name: Scan Backend dependencies
       if: ${{ hashFiles('virida_api/package.json') != '' }}
       working-directory: virida_api
       run: |
-        npm audit --audit-level=moderate || echo "[WARN] Security vulnerabilities found in virida_api"
+        npm ci
+        npm audit --audit-level=high
 
   # ========================================
   # BUILD
@@ -333,13 +503,13 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         token: ${{ secrets.GITEA }}
         submodules: false
 
     - name: Checkout virida_api
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         repository: Virida/virida_api
         ref: main
@@ -347,7 +517,7 @@ jobs:
         token: ${{ secrets.GITEA }}
 
     - name: Checkout virida_app
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         repository: Virida/virida_app
         ref: master
@@ -355,7 +525,7 @@ jobs:
         token: ${{ secrets.GITEA }}
       
     - name: Setup Node.js
-      uses: actions/setup-node@v3
+      uses: actions/setup-node@v4
       with:
         node-version: ${{ env.NODE_VERSION }}
         cache: npm
@@ -367,7 +537,17 @@ jobs:
       if: ${{ hashFiles('virida_app/package.json') != '' }}
       working-directory: virida_app
       run: |
-        npm ci --ignore-scripts || npm install --ignore-scripts
+        set -e
+        if npm ci --ignore-scripts; then
+          echo "[OK] npm ci"
+        else
+          if [ "${NPM_CI_FALLBACK_INSTALL}" = "true" ]; then
+            echo "[WARN] npm ci failed (lockfile mismatch). Falling back to npm install."
+            npm install --ignore-scripts
+          else
+            exit 1
+          fi
+        fi
         NODE_OPTIONS="--max-old-space-size=1536 --no-warnings" npm run build
         echo "[OK] Frontend build successful"
         
@@ -400,13 +580,13 @@ jobs:
         fi
 
     - name: Checkout code (with submodules)
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         token: ${{ secrets.GITEA }}
         submodules: false
 
     - name: Checkout virida_api
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         repository: Virida/virida_api
         ref: main
@@ -414,7 +594,7 @@ jobs:
         token: ${{ secrets.GITEA }}
 
     - name: Checkout virida_app
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         repository: Virida/virida_app
         ref: master
@@ -422,7 +602,7 @@ jobs:
         token: ${{ secrets.GITEA }}
 
     - name: Setup Node.js
-      uses: actions/setup-node@v3
+      uses: actions/setup-node@v4
       with:
         node-version: ${{ env.NODE_VERSION }}
         cache: npm
@@ -449,7 +629,17 @@ jobs:
         NODE_OPTIONS: --no-warnings
         CI: "true"
       run: |
-        npm ci --ignore-scripts || npm install --ignore-scripts
+        set -e
+        if npm ci --ignore-scripts; then
+          echo "[OK] npm ci"
+        else
+          if [ "${NPM_CI_FALLBACK_INSTALL}" = "true" ]; then
+            echo "[WARN] npm ci failed (lockfile mismatch). Falling back to npm install."
+            npm install --ignore-scripts
+          else
+            exit 1
+          fi
+        fi
         npm test
 
     # NOTE: The official SonarQube actions use Docker. Our runner doesn't provide
@@ -460,7 +650,16 @@ jobs:
         SONAR_SCANNER_DIR: ${{ env.SONAR_SCANNER_DIR }}
       run: |
         set -euo pipefail
-        curl -sSLo /tmp/sonar-scanner.zip "https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-${SONAR_SCANNER_VERSION}-linux-x64.zip"
+        SONAR_SCANNER_URL="https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-${SONAR_SCANNER_VERSION}-linux-x64.zip"
+        curl -fsSLo /tmp/sonar-scanner.zip "${SONAR_SCANNER_URL}"
+        curl -fsSLo /tmp/sonar-scanner.zip.sha256 "${SONAR_SCANNER_URL}.sha256"
+        EXPECTED_SHA="$(awk '{print $1}' /tmp/sonar-scanner.zip.sha256)"
+        ACTUAL_SHA="$(shasum -a 256 /tmp/sonar-scanner.zip | awk '{print $1}')"
+        if [ -z "${EXPECTED_SHA}" ] || [ "${EXPECTED_SHA}" != "${ACTUAL_SHA}" ]; then
+          echo "::error::SonarScanner SHA256 mismatch"
+          echo "::error::Expected=${EXPECTED_SHA} Actual=${ACTUAL_SHA}"
+          exit 1
+        fi
         rm -rf "${SONAR_SCANNER_DIR}" "/tmp/sonar-scanner-${SONAR_SCANNER_VERSION}-linux-x64"
         unzip -q /tmp/sonar-scanner.zip -d /tmp
         mv "/tmp/sonar-scanner-${SONAR_SCANNER_VERSION}-linux-x64" "${SONAR_SCANNER_DIR}"
@@ -479,8 +678,18 @@ jobs:
         # Normaliser SONAR_HOST_URL en gardant seulement scheme + host
         SONAR_HOST_URL_CLEAN="$(printf '%s\n' "${SONAR_HOST_URL}" | sed -E 's#(https?://[^/]+).*#\1#')"
 
-        # Sanity check: API must answer JSON (not the HTML SPA shell)
-        statusJson="$(curl -sS -u "${SONAR_TOKEN}:" "${SONAR_HOST_URL_CLEAN}/api/system/status" || true)"
+        # Sanity check: API must answer JSON (not the HTML SPA shell) and token must be valid.
+        statusCode="$(curl -sS -u "${SONAR_TOKEN}:" -o /tmp/sonar_status.json -w "%{http_code}" "${SONAR_HOST_URL_CLEAN}/api/system/status" || true)"
+        statusJson="$(cat /tmp/sonar_status.json 2>/dev/null || true)"
+        if [ "${statusCode}" = "401" ] || [ "${statusCode}" = "403" ]; then
+          echo "::error::SonarQube auth failed (HTTP ${statusCode}). Vérifie SONAR_TOKEN (permissions: Execute Analysis)."
+          exit 1
+        fi
+        if [ "${statusCode}" != "200" ]; then
+          echo "::error::SonarQube status check failed (HTTP ${statusCode})."
+          echo "$statusJson" | head -n 50
+          exit 1
+        fi
         if echo "$statusJson" | head -n 1 | grep -qi '<!doctype html'; then
           echo "::error::SONAR_HOST_URL invalide (tu as probablement collé une URL type /projects ou /dashboard)."
           echo "::error::Mets SONAR_HOST_URL sur la RACINE, ex: https://ton-sonarqube.domaine"
@@ -490,7 +699,17 @@ jobs:
         fi
 
         # SonarScanner bootstrap index must NOT return HTML. If it does, your reverse-proxy is rewriting /batch/* to index.html.
-        bootstrap="$(curl -sS -u "${SONAR_TOKEN}:" "${SONAR_HOST_URL_CLEAN}/batch/index" || true)"
+        bootstrapCode="$(curl -sS -u "${SONAR_TOKEN}:" -o /tmp/sonar_bootstrap.txt -w "%{http_code}" "${SONAR_HOST_URL_CLEAN}/batch/index" || true)"
+        bootstrap="$(cat /tmp/sonar_bootstrap.txt 2>/dev/null || true)"
+        if [ "${bootstrapCode}" = "401" ] || [ "${bootstrapCode}" = "403" ]; then
+          echo "::error::SonarQube auth failed on /batch/index (HTTP ${bootstrapCode}). Vérifie SONAR_TOKEN."
+          exit 1
+        fi
+        if [ "${bootstrapCode}" != "200" ]; then
+          echo "::error::SonarQube bootstrap failed (HTTP ${bootstrapCode})."
+          echo "$bootstrap" | head -n 50
+          exit 1
+        fi
         if echo "$bootstrap" | head -n 1 | grep -qi '<!doctype html'; then
           echo "::error::Ton SonarQube renvoie du HTML sur /batch/index (le scanner ne peut pas démarrer)."
           echo "::error::Fix: ton proxy (nginx/clever) doit proxyfier /batch/* vers SonarQube (pas vers index.html)."
@@ -502,7 +721,7 @@ jobs:
         env -u GITHUB_ACTIONS -u GITHUB_SERVER_URL -u GITHUB_REPOSITORY -u GITHUB_SHA \
           "${SONAR_SCANNER_DIR}/bin/sonar-scanner" \
           -Dsonar.host.url="${SONAR_HOST_URL_CLEAN}" \
-          -Dsonar.login="${SONAR_TOKEN}" \
+          -Dsonar.token="${SONAR_TOKEN}" \
           -Dsonar.projectKey=virida_api \
           -Dsonar.projectName=virida_api \
           -Dsonar.sources=src \
@@ -566,7 +785,17 @@ jobs:
 
         SONAR_HOST_URL_CLEAN="$(python3 -c 'import sys; from urllib.parse import urlparse, urlunparse; u=urlparse(sys.argv[1].strip()); path=u.path or \"\"; path = \"\" if path.startswith((\"/projects\",\"/project\",\"/dashboard\",\"/sessions\",\"/admin\")) else path; clean = urlunparse((u.scheme,u.netloc,\"\",\"\",\"\",\"\")) if path in (\"\",\"/\") else urlunparse((u.scheme,u.netloc,path.rstrip(\"/\"),\"\",\"\",\"\")); print(clean.rstrip(\"/\"))' "${SONAR_HOST_URL}")"
 
-        statusJson="$(curl -sS -u "${SONAR_TOKEN}:" "${SONAR_HOST_URL_CLEAN}/api/system/status" || true)"
+        statusCode="$(curl -sS -u "${SONAR_TOKEN}:" -o /tmp/sonar_status.json -w "%{http_code}" "${SONAR_HOST_URL_CLEAN}/api/system/status" || true)"
+        statusJson="$(cat /tmp/sonar_status.json 2>/dev/null || true)"
+        if [ "${statusCode}" = "401" ] || [ "${statusCode}" = "403" ]; then
+          echo "::error::SonarQube auth failed (HTTP ${statusCode}). Vérifie SONAR_TOKEN (permissions: Execute Analysis)."
+          exit 1
+        fi
+        if [ "${statusCode}" != "200" ]; then
+          echo "::error::SonarQube status check failed (HTTP ${statusCode})."
+          echo "$statusJson" | head -n 50
+          exit 1
+        fi
         if echo "$statusJson" | head -n 1 | grep -qi '<!doctype html'; then
           echo "::error::SONAR_HOST_URL invalide (tu as probablement collé une URL type /projects ou /dashboard)."
           echo "::error::Mets SONAR_HOST_URL sur la RACINE, ex: https://ton-sonarqube.domaine"
@@ -575,7 +804,17 @@ jobs:
           exit 1
         fi
 
-        bootstrap="$(curl -sS -u "${SONAR_TOKEN}:" "${SONAR_HOST_URL_CLEAN}/batch/index" || true)"
+        bootstrapCode="$(curl -sS -u "${SONAR_TOKEN}:" -o /tmp/sonar_bootstrap.txt -w "%{http_code}" "${SONAR_HOST_URL_CLEAN}/batch/index" || true)"
+        bootstrap="$(cat /tmp/sonar_bootstrap.txt 2>/dev/null || true)"
+        if [ "${bootstrapCode}" = "401" ] || [ "${bootstrapCode}" = "403" ]; then
+          echo "::error::SonarQube auth failed on /batch/index (HTTP ${bootstrapCode}). Vérifie SONAR_TOKEN."
+          exit 1
+        fi
+        if [ "${bootstrapCode}" != "200" ]; then
+          echo "::error::SonarQube bootstrap failed (HTTP ${bootstrapCode})."
+          echo "$bootstrap" | head -n 50
+          exit 1
+        fi
         if echo "$bootstrap" | head -n 1 | grep -qi '<!doctype html'; then
           echo "::error::Ton SonarQube renvoie du HTML sur /batch/index (le scanner ne peut pas démarrer)."
           echo "::error::Fix: ton proxy (nginx/clever) doit proxyfier /batch/* vers SonarQube (pas vers index.html)."
@@ -587,7 +826,7 @@ jobs:
         env -u GITHUB_ACTIONS -u GITHUB_SERVER_URL -u GITHUB_REPOSITORY -u GITHUB_SHA \
           "${SONAR_SCANNER_DIR}/bin/sonar-scanner" \
           -Dsonar.host.url="${SONAR_HOST_URL_CLEAN}" \
-          -Dsonar.login="${SONAR_TOKEN}" \
+          -Dsonar.token="${SONAR_TOKEN}" \
           -Dsonar.projectKey=virida_app \
           -Dsonar.projectName=virida_app \
           -Dsonar.sources=src \
@@ -645,7 +884,7 @@ jobs:
   ci-summary:
     runs-on: virida-host
     name: CI Summary
-    needs: [validate, test-frontend, test-backend, security, build, sonarqube]
+    needs: [validate, test-eve, test-leafnode, test-touch-ihm, test-frontend, test-backend, security, build, sonarqube]
     if: always()
     
     steps:
@@ -665,21 +904,67 @@ jobs:
         echo "  [OK] Build: ${{ needs.build.result }}"
         echo "  [OK] SonarQube: ${{ needs.sonarqube.result }}"
         echo ""
-        # Accept SonarQube being skipped when not configured yet
-        SONAR_OK="false"
-        if [[ "${{ needs.sonarqube.result }}" == "success" || "${{ needs.sonarqube.result }}" == "skipped" ]]; then
-          SONAR_OK="true"
-        fi
+        EVE_OK="false"
+        if [[ "${{ needs.test-eve.result }}" == "success" || "${{ needs.test-eve.result }}" == "skipped" ]]; then EVE_OK="true"; fi
+        LEAF_OK="false"
+        if [[ "${{ needs.test-leafnode.result }}" == "success" || "${{ needs.test-leafnode.result }}" == "skipped" ]]; then LEAF_OK="true"; fi
+        TOUCH_OK="false"
+        if [[ "${{ needs.test-touch-ihm.result }}" == "success" || "${{ needs.test-touch-ihm.result }}" == "skipped" ]]; then TOUCH_OK="true"; fi
 
         if [[ "${{ needs.validate.result }}" == "success" && \
+              "${EVE_OK}" == "true" && \
+              "${LEAF_OK}" == "true" && \
+              "${TOUCH_OK}" == "true" && \
               "${{ needs.test-frontend.result }}" == "success" && \
               "${{ needs.test-backend.result }}" == "success" && \
+              "${{ needs.security.result }}" == "success" && \
               "${{ needs.build.result }}" == "success" && \
-              "${SONAR_OK}" == "true" ]]; then
+              "${{ needs.sonarqube.result }}" == "success" ]]; then
           echo "[SUCCESS] All CI checks passed!"
           exit 0
         else
-          echo "[WARN] Some CI checks had issues"
-          exit 0
+          echo "::error::Some required CI checks failed"
+          exit 1
         fi
+
+  # ========================================
+  # CD (OPTIONAL) - Clever Cloud deploy via git push
+  # ========================================
+  deploy-clevercloud:
+    runs-on: virida-host
+    name: Deploy (Clever Cloud) [optional]
+    needs: [build, sonarqube]
+    if: ${{ github.event_name == 'push' && github.ref_name == 'master' && secrets.CD_ENABLED == 'true' }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Validate deploy secrets
+      env:
+        CLEVER_GIT_URL: ${{ secrets.CLEVER_GIT_URL }}
+        CLEVER_DEPLOY_REF: ${{ secrets.CLEVER_DEPLOY_REF }}
+      run: |
+        set -euo pipefail
+        if [ -z "${CLEVER_GIT_URL:-}" ]; then
+          echo "::error::Missing secret CLEVER_GIT_URL (git remote URL for Clever Cloud app)."
+          exit 1
+        fi
+        if [ -z "${CLEVER_DEPLOY_REF:-}" ]; then
+          echo "::error::Missing secret CLEVER_DEPLOY_REF (e.g. master or main)."
+          exit 1
+        fi
+        echo "[OK] Deploy secrets present"
+
+    - name: Push to Clever Cloud
+      env:
+        CLEVER_GIT_URL: ${{ secrets.CLEVER_GIT_URL }}
+        CLEVER_DEPLOY_REF: ${{ secrets.CLEVER_DEPLOY_REF }}
+      run: |
+        set -euo pipefail
+        git remote remove clevercloud 2>/dev/null || true
+        git remote add clevercloud "${CLEVER_GIT_URL}"
+        git push clevercloud "HEAD:${CLEVER_DEPLOY_REF}"
 

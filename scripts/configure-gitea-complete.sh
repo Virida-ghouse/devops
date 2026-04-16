@@ -12,7 +12,7 @@ echo "=============================================="
 GITEA_URL="https://app-5d976fde-cfd7-4662-9fff-49ed6f693eee.cleverapps.io"
 REPO_URL="$GITEA_URL/crk_test/virida"
 RUNNER_NAME="virida-runner-$(hostname)"
-RUNNER_LABELS="ubuntu-latest:docker://node:18,ubuntu-latest:docker://python:3.11,ubuntu-latest:docker://golang:1.21"
+RUNNER_LABELS="ubuntu-latest:docker://node:18,python:docker://python:3.11,golang:docker://golang:1.21"
 
 # Couleurs
 GREEN='\033[0;32m'

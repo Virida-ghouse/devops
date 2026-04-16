@@ -48,24 +48,8 @@ export SONAR_WEB_CONTEXT="${SONAR_WEB_CONTEXT:-/}"
 echo "SonarQube configuration:"
 echo "  - DB: ${POSTGRES_DB} @ ${POSTGRES_HOST}:${POSTGRES_PORT}"
 echo "  - Web: internal port 9000, nginx proxy on ${PORT:-8080}"
-
-# Repair the admin password that was previously written with an invalid salt revision.
-# This is a one-off recovery path to get SonarQube booting again.
-export PGPASSWORD="${POSTGRES_PASSWORD}"
-psql \
-  --host="${POSTGRES_HOST}" \
-  --port="${POSTGRES_PORT}" \
-  --username="${POSTGRES_USER}" \
-  --dbname="${POSTGRES_DB}" \
-  --set=ON_ERROR_STOP=1 <<'SQL'
-UPDATE users
-SET crypted_password = '$2a$10$6Zy6r6fWk1P42VvJpW1VcOLz93P.IYqSmcGjpFSr1g9FRuyfcQiKW',
-    salt = NULL,
-    hash_method = 'BCRYPT',
-    reset_password = true
-WHERE login = 'admin';
-SQL
-unset PGPASSWORD
+echo "[INFO] Admin recovery SQL is disabled in normal startup path."
+echo "[INFO] Use sonarqube/recovery-reset-admin-password.sh only for one-shot manual recovery."
 
 # Start SonarQube in background as sonarqube user (SonarQube refuses to run as root)
 # Write env to file and source it - avoids shell escaping issues with su -c
