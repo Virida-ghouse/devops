@@ -11,7 +11,7 @@ cd /opt/gitea-runner
 
 # Ensure common system paths are present. JS-based actions (checkout, upload-artifact, setup-node, ...)
 # require `node` to be resolvable via PATH.
-export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH:-}"
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${HOME}/.cargo/bin:${PATH:-}"
 
 echo "PATH: $PATH"
 if command -v node >/dev/null 2>&1; then
@@ -21,6 +21,38 @@ else
     echo "        Fix: ensure Node.js is installed in the runner image and available in PATH."
     exit 1
 fi
+
+# --- Docker-in-Docker: try to start dockerd ---
+try_start_dockerd() {
+    if command -v dockerd >/dev/null 2>&1; then
+        echo "[DinD] Attempting to start Docker daemon..."
+        mkdir -p /tmp/docker-run
+        nohup dockerd \
+            --host=unix:///tmp/docker.sock \
+            --storage-driver=vfs \
+            --data-root=/tmp/docker-data \
+            --pidfile=/tmp/docker.pid \
+            >/tmp/dockerd.log 2>&1 &
+        export DOCKER_HOST="unix:///tmp/docker.sock"
+
+        local retries=0
+        while [ $retries -lt 15 ]; do
+            if docker info >/dev/null 2>&1; then
+                echo "[DinD] Docker daemon started successfully."
+                return 0
+            fi
+            retries=$((retries + 1))
+            sleep 1
+        done
+        echo "[DinD] Docker daemon failed to start (check /tmp/dockerd.log). Continuing without Docker."
+        cat /tmp/dockerd.log 2>/dev/null | tail -5 || true
+    else
+        echo "[DinD] dockerd binary not found. Skipping Docker daemon start."
+    fi
+    return 1
+}
+
+try_start_dockerd || true
 
 has_docker() {
     command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1

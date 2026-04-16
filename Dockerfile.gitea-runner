@@ -53,8 +53,15 @@ RUN apt-get update \
     && apt-get install -y golang-go \
     && rm -rf /var/lib/apt/lists/*
 
-# Note: Clever Tools CLI is not required inside the runner container.
-
+# Installer Rust via rustup (pour leafnode cargo check/clippy)
+ENV RUSTUP_HOME=/usr/local/rustup
+ENV CARGO_HOME=/usr/local/cargo
+ENV PATH="/usr/local/cargo/bin:${PATH}"
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal \
+    && rustup component add clippy \
+    && cargo --version \
+    && rustc --version \
+    && clippy-driver --version
 
 # Créer un utilisateur pour le runner
 RUN useradd -m -s /bin/bash runner \
