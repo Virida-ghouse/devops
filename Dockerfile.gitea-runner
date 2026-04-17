@@ -45,8 +45,11 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
 
 # Installer Python (utilisé pour le healthcheck et certains jobs)
 # Note: sur Ubuntu, le paquet s'appelle python3-pip (pas python3.11-pip)
+# podman-compose : valide/parse les docker-compose.yml sans docker-compose/docker daemon
 RUN apt-get update \
     && apt-get install -y python3 python3-pip python3-venv python-is-python3 \
+    && pip3 install --no-cache-dir podman-compose==1.2.0 \
+    && ln -sf "$(command -v podman-compose)" /usr/local/bin/podman-compose \
     && rm -rf /var/lib/apt/lists/*
 
 # Installer Go (utile pour certains workflows)
