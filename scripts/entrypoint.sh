@@ -22,21 +22,51 @@ else
     exit 1
 fi
 
-# --- Docker-in-Docker: try to start dockerd ---
+# --- Docker-in-Docker: try rootless, then regular dockerd ---
 try_start_dockerd() {
+    local sock=""
+
+    # Strategy 1: rootless Docker (no root required)
+    if command -v dockerd-rootless.sh >/dev/null 2>&1; then
+        echo "[DinD] Attempting rootless Docker daemon..."
+        export XDG_RUNTIME_DIR="/tmp/docker-rootless-$$"
+        mkdir -p "$XDG_RUNTIME_DIR" /tmp/docker-rootless-data
+        sock="${XDG_RUNTIME_DIR}/docker.sock"
+
+        nohup dockerd-rootless.sh \
+            --storage-driver=fuse-overlayfs \
+            --data-root=/tmp/docker-rootless-data \
+            >"${XDG_RUNTIME_DIR}/dockerd.log" 2>&1 &
+        export DOCKER_HOST="unix://${sock}"
+
+        local retries=0
+        while [ $retries -lt 20 ]; do
+            if docker info >/dev/null 2>&1; then
+                echo "[DinD] Rootless Docker daemon started successfully."
+                return 0
+            fi
+            retries=$((retries + 1))
+            sleep 1
+        done
+        echo "[DinD] Rootless Docker failed. Log:"
+        tail -10 "${XDG_RUNTIME_DIR}/dockerd.log" 2>/dev/null || true
+    fi
+
+    # Strategy 2: regular dockerd (needs root — will likely fail on PaaS)
     if command -v dockerd >/dev/null 2>&1; then
-        echo "[DinD] Attempting to start Docker daemon..."
-        mkdir -p /tmp/docker-run
+        echo "[DinD] Trying regular dockerd (requires root)..."
+        sock="/tmp/docker.sock"
+        mkdir -p /tmp/docker-data
         nohup dockerd \
-            --host=unix:///tmp/docker.sock \
+            --host="unix://${sock}" \
             --storage-driver=vfs \
             --data-root=/tmp/docker-data \
             --pidfile=/tmp/docker.pid \
             >/tmp/dockerd.log 2>&1 &
-        export DOCKER_HOST="unix:///tmp/docker.sock"
+        export DOCKER_HOST="unix://${sock}"
 
         local retries=0
-        while [ $retries -lt 15 ]; do
+        while [ $retries -lt 10 ]; do
             if docker info >/dev/null 2>&1; then
                 echo "[DinD] Docker daemon started successfully."
                 return 0
@@ -44,11 +74,10 @@ try_start_dockerd() {
             retries=$((retries + 1))
             sleep 1
         done
-        echo "[DinD] Docker daemon failed to start (check /tmp/dockerd.log). Continuing without Docker."
-        cat /tmp/dockerd.log 2>/dev/null | tail -5 || true
-    else
-        echo "[DinD] dockerd binary not found. Skipping Docker daemon start."
+        echo "[DinD] Regular dockerd also failed. Continuing without Docker."
+        tail -5 /tmp/dockerd.log 2>/dev/null || true
     fi
+
     return 1
 }
 
