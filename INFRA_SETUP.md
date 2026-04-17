@@ -26,6 +26,10 @@ Optionnel (selon ce que tu veux activer) :
 - `SONAR_HOST_URL`: racine de l’instance, ex `https://ton-sonarqube.domaine`
 - `SONAR_TOKEN`: token SonarQube avec permission **Execute Analysis**
 
+#### Frontend build (optionnel mais recommandé)
+
+- `VITE_API_URL`: URL de l'API backend (ex: `https://api.virida.org`). Injecté automatiquement lors du build frontend pour éviter de la stocker en dur dans `.env`.
+
 #### Déploiement Clever Cloud (optionnel)
 
 Le job `deploy-clevercloud` est désactivé par défaut.
