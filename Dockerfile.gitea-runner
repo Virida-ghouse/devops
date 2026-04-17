@@ -14,7 +14,7 @@ ENV RUNNER_NAME="virida-runner"
 ENV RUNNER_LABELS="ubuntu-latest:docker://node:18,python:docker://python:3.11,golang:docker://golang:1.21"
 ENV RUNNER_WORK_DIR="/tmp/act_runner/workspace"
 
-# Installer les dépendances système + rootless Docker prereqs
+# Installer les dépendances système + Podman (daemonless container engine)
 RUN apt-get update && apt-get install -y \
     wget \
     curl \
@@ -24,18 +24,15 @@ RUN apt-get update && apt-get install -y \
     zip \
     xz-utils \
     openssh-client \
-    docker.io \
-    docker-compose \
+    podman \
+    buildah \
     build-essential \
     ca-certificates \
     gnupg \
     lsb-release \
     software-properties-common \
-    uidmap \
-    dbus-user-session \
-    fuse-overlayfs \
-    slirp4netns \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/bin/podman /usr/local/bin/docker
 
 # Installer Node.js 20 (JS-based Actions like actions/checkout/setup-node run with node16/node20 runtimes)
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
@@ -67,11 +64,8 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --de
     && rustc --version \
     && clippy-driver --version
 
-# Créer un utilisateur pour le runner avec sub-UIDs/GIDs pour rootless Docker
-RUN useradd -m -s /bin/bash runner \
-    && usermod -aG docker runner \
-    && echo "runner:100000:65536" >> /etc/subuid \
-    && echo "runner:100000:65536" >> /etc/subgid
+# Créer un utilisateur pour le runner
+RUN useradd -m -s /bin/bash runner
 
 # Créer le répertoire de travail
 WORKDIR /opt/gitea-runner

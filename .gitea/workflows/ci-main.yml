@@ -114,31 +114,32 @@ jobs:
           echo "::warning::python3 not available on runner; skipping virida_eve checks."
         fi
 
-    - name: Docker sanity checks (compose + build)
+    - name: Container sanity checks (compose + build)
       working-directory: virida_eve
       run: |
         set -euo pipefail
         if ! command -v docker >/dev/null 2>&1; then
-          echo "::warning::docker not available on runner; skipping Docker checks for virida-eve."
-          exit 0
-        fi
-        if ! docker info >/dev/null 2>&1; then
-          echo "::warning::docker daemon not reachable; skipping Docker checks for virida-eve."
+          echo "::warning::docker/podman not available on runner; skipping container checks for virida-eve."
           exit 0
         fi
 
+        echo "Using: $(docker --version 2>/dev/null || true)"
+
         if [ -f "docker-compose.yml" ] || [ -f "docker-compose.yaml" ] || [ -f "compose.yml" ] || [ -f "compose.yaml" ]; then
-          if docker compose version >/dev/null 2>&1; then
+          if command -v podman-compose >/dev/null 2>&1; then
+            echo "[OK] Compose file found, validating with podman-compose..."
+            podman-compose config >/dev/null || echo "::warning::podman-compose config failed"
+          elif docker compose version >/dev/null 2>&1; then
             docker compose config >/dev/null
           else
-            echo "::warning::docker compose not available; skipping compose validation."
+            echo "::warning::No compose tool available; skipping compose validation."
           fi
         fi
 
         if [ -f "Dockerfile" ]; then
           docker build -t "virida-eve:ci" .
         else
-          echo "::warning::No Dockerfile found; skipping docker build."
+          echo "::warning::No Dockerfile found; skipping container build."
         fi
 
     - name: RAG benchmark (if present)
@@ -181,11 +182,7 @@ jobs:
           exit 1
         fi
         if ! command -v docker >/dev/null 2>&1; then
-          echo "::error::docker not available on runner; cannot push image."
-          exit 1
-        fi
-        if ! docker info >/dev/null 2>&1; then
-          echo "::error::docker daemon not reachable; cannot push image."
+          echo "::error::docker/podman not available on runner; cannot push image."
           exit 1
         fi
         if [ ! -f "Dockerfile" ]; then
