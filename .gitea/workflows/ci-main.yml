@@ -742,6 +742,21 @@ jobs:
           exit 1
         fi
 
+        # SonarScanner CLI 8.x uses the v2 API with Bearer auth. Validate it now with a clear message.
+        v2Code="$(curl -sS -o /tmp/sonar_v2.json -w "%{http_code}" \
+          -H "Authorization: Bearer ${SONAR_TOKEN}" \
+          "${SONAR_HOST_URL_CLEAN}/api/v2/analysis/version" || true)"
+        if [ "${v2Code}" != "200" ]; then
+          echo "::error::SonarQube API v2 auth failed (HTTP ${v2Code}) — used by SonarScanner CLI 8.x."
+          echo "::error::Le token actuel n'est pas valide pour l'API v2 (Bearer)."
+          echo "::error::Fix: dans SonarQube, Administration > Security > Users > (compte admin) > Tokens"
+          echo "::error::  Generate > Type: 'Global Analysis Token' > Copie la valeur et mets-la dans le secret Gitea SONAR_TOKEN."
+          echo "::error::  Puis relance la CI. (Les 'User Token' simples fonctionnent aussi s'ils ont la permission 'Execute Analysis'.)"
+          cat /tmp/sonar_v2.json 2>/dev/null | head -n 20
+          exit 1
+        fi
+        echo "[OK] SonarQube auth validated (API v1 Basic + API v2 Bearer)."
+
         env -u GITHUB_ACTIONS -u GITHUB_SERVER_URL -u GITHUB_REPOSITORY -u GITHUB_SHA \
           "${SONAR_SCANNER_DIR}/bin/sonar-scanner" \
           -Dsonar.host.url="${SONAR_HOST_URL_CLEAN}" \
@@ -846,6 +861,20 @@ jobs:
           echo "$bootstrap" | head -n 20
           exit 1
         fi
+
+        # SonarScanner CLI 8.x uses the v2 API with Bearer auth.
+        v2Code="$(curl -sS -o /tmp/sonar_v2.json -w "%{http_code}" \
+          -H "Authorization: Bearer ${SONAR_TOKEN}" \
+          "${SONAR_HOST_URL_CLEAN}/api/v2/analysis/version" || true)"
+        if [ "${v2Code}" != "200" ]; then
+          echo "::error::SonarQube API v2 auth failed (HTTP ${v2Code}) — used by SonarScanner CLI 8.x."
+          echo "::error::Le token actuel n'est pas valide pour l'API v2 (Bearer)."
+          echo "::error::Fix: dans SonarQube, Administration > Security > Users > (compte admin) > Tokens"
+          echo "::error::  Generate > Type: 'Global Analysis Token' > Copie la valeur et mets-la dans le secret Gitea SONAR_TOKEN."
+          cat /tmp/sonar_v2.json 2>/dev/null | head -n 20
+          exit 1
+        fi
+        echo "[OK] SonarQube auth validated (API v1 Basic + API v2 Bearer)."
 
         env -u GITHUB_ACTIONS -u GITHUB_SERVER_URL -u GITHUB_REPOSITORY -u GITHUB_SHA \
           "${SONAR_SCANNER_DIR}/bin/sonar-scanner" \
