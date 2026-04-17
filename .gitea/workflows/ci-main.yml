@@ -125,19 +125,37 @@ jobs:
 
         echo "Using: $(docker --version 2>/dev/null || true)"
 
-        if [ -f "docker-compose.yml" ] || [ -f "docker-compose.yaml" ] || [ -f "compose.yml" ] || [ -f "compose.yaml" ]; then
+        # Locate compose file (root or docker/ subdir)
+        COMPOSE_FILE=""
+        for f in docker-compose.yml docker-compose.yaml compose.yml compose.yaml \
+                 docker/docker-compose.yml docker/docker-compose.yaml docker/compose.yml docker/compose.yaml; do
+          if [ -f "$f" ]; then COMPOSE_FILE="$f"; break; fi
+        done
+        if [ -n "$COMPOSE_FILE" ]; then
+          echo "[OK] Compose file found: $COMPOSE_FILE"
           if command -v podman-compose >/dev/null 2>&1; then
-            echo "[OK] Compose file found, validating with podman-compose..."
-            podman-compose config >/dev/null || echo "::warning::podman-compose config failed"
+            podman-compose -f "$COMPOSE_FILE" config >/dev/null || echo "::warning::podman-compose config failed"
           elif docker compose version >/dev/null 2>&1; then
-            docker compose config >/dev/null
+            docker compose -f "$COMPOSE_FILE" config >/dev/null || echo "::warning::docker compose config failed"
           else
             echo "::warning::No compose tool available; skipping compose validation."
           fi
+        else
+          echo "[INFO] No compose file found."
         fi
 
+        # Locate Dockerfile (root or docker/ subdir)
+        DOCKERFILE=""
+        BUILD_CONTEXT="."
         if [ -f "Dockerfile" ]; then
-          docker build -t "virida-eve:ci" .
+          DOCKERFILE="Dockerfile"
+        elif [ -f "docker/Dockerfile" ]; then
+          DOCKERFILE="docker/Dockerfile"
+          BUILD_CONTEXT="docker"
+        fi
+        if [ -n "$DOCKERFILE" ]; then
+          echo "[OK] Building image from $DOCKERFILE (context=$BUILD_CONTEXT)..."
+          docker build -f "$DOCKERFILE" -t "virida-eve:ci" "$BUILD_CONTEXT"
         else
           echo "::warning::No Dockerfile found; skipping container build."
         fi
@@ -185,14 +203,21 @@ jobs:
           echo "::error::docker/podman not available on runner; cannot push image."
           exit 1
         fi
-        if [ ! -f "Dockerfile" ]; then
+        DOCKERFILE=""
+        BUILD_CONTEXT="."
+        if [ -f "Dockerfile" ]; then
+          DOCKERFILE="Dockerfile"
+        elif [ -f "docker/Dockerfile" ]; then
+          DOCKERFILE="docker/Dockerfile"
+          BUILD_CONTEXT="docker"
+        else
           echo "::error::No Dockerfile found; cannot build/push image."
           exit 1
         fi
 
         IMAGE_TAG="${EVE_REGISTRY}/${EVE_IMAGE_NAME}:${GITHUB_SHA}"
         echo "${EVE_REGISTRY_PASSWORD}" | docker login "${EVE_REGISTRY}" -u "${EVE_REGISTRY_USERNAME}" --password-stdin
-        docker build -t "${IMAGE_TAG}" .
+        docker build -f "$DOCKERFILE" -t "${IMAGE_TAG}" "$BUILD_CONTEXT"
         docker push "${IMAGE_TAG}"
 
   # ========================================
