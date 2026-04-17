@@ -256,21 +256,16 @@ jobs:
         fi
         echo "[OK] Found Rust project at: $CARGO_DIR"
 
-        # Sanity check the manifest (TOML syntax + package section).
-        if command -v python3 >/dev/null 2>&1; then
-          python3 - "$CARGO_DIR/Cargo.toml" <<'PY'
-        import sys
-        try:
-            import tomllib
-        except ImportError:
-            import tomli as tomllib  # py<3.11
-        p = sys.argv[1]
-        with open(p, "rb") as f:
-            data = tomllib.load(f)
-        pkg = data.get("package", {})
-        print(f"[OK] Cargo.toml parses. name={pkg.get('name')} version={pkg.get('version')} edition={pkg.get('edition')}")
-        PY
+        # Sanity check the manifest (presence of [package] + name/version).
+        MANIFEST="$CARGO_DIR/Cargo.toml"
+        if ! grep -qE '^\[package\]' "$MANIFEST"; then
+          echo "::error::Cargo.toml missing [package] section at $MANIFEST"
+          exit 1
         fi
+        name=$(awk -F'"' '/^name[[:space:]]*=/{print $2; exit}' "$MANIFEST" || true)
+        version=$(awk -F'"' '/^version[[:space:]]*=/{print $2; exit}' "$MANIFEST" || true)
+        edition=$(awk -F'"' '/^edition[[:space:]]*=/{print $2; exit}' "$MANIFEST" || true)
+        echo "[OK] Cargo.toml structure OK. name=${name:-?} version=${version:-?} edition=${edition:-?}"
 
         # Detect ESP-IDF toolchain requirement and gate the heavy build.
         NEEDS_ESP="false"
