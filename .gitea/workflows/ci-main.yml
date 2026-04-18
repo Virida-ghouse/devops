@@ -330,11 +330,13 @@ jobs:
     if: ${{ secrets.GITEA != '' }}
 
     steps:
+    # Note: Virida/virida_touch_ihm has 'main' as default but 'main' only
+    # contains README.md. The real app (React/Vite/TS) lives on 'master'.
     - name: Checkout virida_touch_ihm
       uses: actions/checkout@v4
       with:
         repository: Virida/virida_touch_ihm
-        ref: main
+        ref: master
         path: virida_touch_ihm
         token: ${{ secrets.GITEA }}
 
