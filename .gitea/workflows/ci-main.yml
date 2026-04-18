@@ -755,13 +755,14 @@ jobs:
     - name: SonarQube scan + quality gate (virida_api)
       if: ${{ hashFiles('virida_api/package.json') != '' }}
       working-directory: virida_api
-      timeout-minutes: 15
+      timeout-minutes: 20
       env:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-        # Limit JVM heap to avoid OOM on the Clever Cloud runner (~1-2 GB RAM).
-        SONAR_SCANNER_OPTS: "-Xmx768m -XX:+UseSerialGC -XX:MaxRAMPercentage=75"
-        SONAR_SCANNER_JAVA_OPTS: "-Xmx768m -XX:+UseSerialGC -XX:MaxRAMPercentage=75"
+        # Limit JVM heap to fit on the Clever Cloud runner (~1-2 GB RAM).
+        # SerialGC is the lowest-memory garbage collector.
+        SONAR_SCANNER_OPTS: "-Xmx512m -XX:+UseSerialGC -XX:MaxRAMPercentage=60"
+        SONAR_SCANNER_JAVA_OPTS: "-Xmx512m -XX:+UseSerialGC -XX:MaxRAMPercentage=60"
       run: |
         set -euo pipefail
 
@@ -832,7 +833,9 @@ jobs:
           -Dsonar.sources=src \
           -Dsonar.tests=tests \
           -Dsonar.test.inclusions=tests/**/* \
+          -Dsonar.exclusions="node_modules/**,dist/**,build/**,coverage/**,**/*.min.js,**/*.bundle.js,prisma/migrations/**,**/*.generated.*" \
           -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
+          -Dsonar.scm.disabled=true \
           -Dsonar.sourceEncoding=UTF-8
 
         REPORT=".scannerwork/report-task.txt"
@@ -881,13 +884,13 @@ jobs:
     - name: SonarQube scan + quality gate (virida_app)
       if: ${{ hashFiles('virida_app/package.json') != '' }}
       working-directory: virida_app
-      timeout-minutes: 15
+      timeout-minutes: 20
       env:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-        # Limit JVM heap to avoid OOM on the Clever Cloud runner (~1-2 GB RAM).
-        SONAR_SCANNER_OPTS: "-Xmx768m -XX:+UseSerialGC -XX:MaxRAMPercentage=75"
-        SONAR_SCANNER_JAVA_OPTS: "-Xmx768m -XX:+UseSerialGC -XX:MaxRAMPercentage=75"
+        # Limit JVM heap to fit on the Clever Cloud runner (~1-2 GB RAM).
+        SONAR_SCANNER_OPTS: "-Xmx512m -XX:+UseSerialGC -XX:MaxRAMPercentage=60"
+        SONAR_SCANNER_JAVA_OPTS: "-Xmx512m -XX:+UseSerialGC -XX:MaxRAMPercentage=60"
       run: |
         set -euo pipefail
 
@@ -954,7 +957,8 @@ jobs:
           -Dsonar.sources=src \
           -Dsonar.tests=src \
           -Dsonar.test.inclusions=src/**/*.test.ts,src/**/*.test.tsx,src/**/*.integration.test.tsx \
-          -Dsonar.exclusions=dist/**,public/**,node_modules/**,**/*.d.ts \
+          -Dsonar.exclusions="dist/**,public/**,node_modules/**,coverage/**,**/*.d.ts,**/*.min.js,**/*.bundle.js,**/*.generated.*,src/assets/**" \
+          -Dsonar.scm.disabled=true \
           -Dsonar.sourceEncoding=UTF-8
 
         REPORT=".scannerwork/report-task.txt"
