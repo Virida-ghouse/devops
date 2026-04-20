@@ -758,43 +758,11 @@ jobs:
         fi
 
   # ========================================
-  # CD (OPTIONAL) - Clever Cloud deploy via git push
+  # CD (Clever Cloud) — lives in dedicated workflows:
+  #   .gitea/workflows/api-clever-cloud-deploy.yml   → virida_api
+  #   .gitea/workflows/app-clever-cloud-deploy.yml   → virida_app
+  #   .gitea/workflows/eve-clever-cloud-deploy.yml   → virida-eve (Docker)
+  # Gitea, Gitea Runner and SonarQube apps are deployed/managed manually
+  # via `clever deploy` since their images ship from this repo's Dockerfiles.
   # ========================================
-  deploy-clevercloud:
-    runs-on: virida-host
-    name: Deploy (Clever Cloud) [optional]
-    needs: [build]
-    if: ${{ github.event_name == 'push' && github.ref_name == 'master' && secrets.CD_ENABLED == 'true' }}
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-
-    - name: Validate deploy secrets
-      env:
-        CLEVER_GIT_URL: ${{ secrets.CLEVER_GIT_URL }}
-        CLEVER_DEPLOY_REF: ${{ secrets.CLEVER_DEPLOY_REF }}
-      run: |
-        set -euo pipefail
-        if [ -z "${CLEVER_GIT_URL:-}" ]; then
-          echo "::error::Missing secret CLEVER_GIT_URL (git remote URL for Clever Cloud app)."
-          exit 1
-        fi
-        if [ -z "${CLEVER_DEPLOY_REF:-}" ]; then
-          echo "::error::Missing secret CLEVER_DEPLOY_REF (e.g. master or main)."
-          exit 1
-        fi
-        echo "[OK] Deploy secrets present"
-
-    - name: Push to Clever Cloud
-      env:
-        CLEVER_GIT_URL: ${{ secrets.CLEVER_GIT_URL }}
-        CLEVER_DEPLOY_REF: ${{ secrets.CLEVER_DEPLOY_REF }}
-      run: |
-        set -euo pipefail
-        git remote remove clevercloud 2>/dev/null || true
-        git remote add clevercloud "${CLEVER_GIT_URL}"
-        git push clevercloud "HEAD:${CLEVER_DEPLOY_REF}"
 

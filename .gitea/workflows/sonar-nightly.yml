@@ -1,8 +1,8 @@
 name: SonarQube Analysis (auto)
 
-# SonarQube runs in a SEPARATE workflow from ci-main.yml because it's
-# resource-heavy on the Clever Cloud runner (~1 GB RAM) and would otherwise
-# block the pipeline. It now runs automatically:
+# SonarQube runs in a SEPARATE workflow from ci-main.yml to keep the main
+# pipeline fast. The Gitea Runner on Clever Cloud is expected to be at
+# least flavor M (4 GB RAM) for scans to complete reliably.
 #   - On every push to master (parallel with ci-main.yml, non-blocking)
 #   - Every Sunday at 03:00 UTC as a catch-all scheduled scan
 #   - On-demand via Gitea Actions UI (workflow_dispatch)
@@ -142,21 +142,26 @@ jobs:
         df -h . 2>/dev/null | head -5
         echo "==============================="
 
+    # Tuning for runner flavor M (4 GB RAM):
+    #   - Java scanner heap: 2 GB (was 640m on XS flavor)
+    #   - Node.js workers:   2 GB (was 384m on XS flavor)
+    #   - Default G1GC (SerialGC was a low-RAM hack, no longer needed)
+    #   - continue-on-error kept as safety net; remove once stable
     - name: SonarQube scan + quality gate (virida_api)
       if: ${{ github.event.inputs.target != 'virida_app' && hashFiles('virida_api/package.json') != '' }}
       working-directory: virida_api
-      timeout-minutes: 45
+      timeout-minutes: 30
       continue-on-error: true
       env:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-        SONAR_SCANNER_OPTS: "-Xmx640m -Xms256m -XX:+UseSerialGC"
-        SONAR_SCANNER_JAVA_OPTS: "-Xmx640m -Xms256m -XX:+UseSerialGC"
+        SONAR_SCANNER_OPTS: "-Xmx2048m -Xms512m"
+        SONAR_SCANNER_JAVA_OPTS: "-Xmx2048m -Xms512m"
       run: |
         set -euo pipefail
         SONAR_HOST_URL_CLEAN="$(printf '%s\n' "${SONAR_HOST_URL}" | sed -E 's#(https?://[^/]+).*#\1#')"
 
-        echo "[INFO] Starting scan for virida_api (timeout 45 min, advisory)..."
+        echo "[INFO] Starting scan for virida_api (timeout 30 min)..."
         env -u GITHUB_ACTIONS -u GITHUB_SERVER_URL -u GITHUB_REPOSITORY -u GITHUB_SHA \
           "${SONAR_SCANNER_DIR}/bin/sonar-scanner" \
           -Dsonar.host.url="${SONAR_HOST_URL_CLEAN}" \
@@ -168,28 +173,26 @@ jobs:
           -Dsonar.test.inclusions=tests/**/* \
           -Dsonar.exclusions="node_modules/**,dist/**,build/**,coverage/**,**/*.min.js,**/*.bundle.js,prisma/migrations/**,**/*.generated.*" \
           -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
-          -Dsonar.javascript.node.maxspace=384 \
+          -Dsonar.javascript.node.maxspace=2048 \
           -Dsonar.scm.disabled=true \
-          -Dsonar.cpd.exclusions="**/*" \
           -Dsonar.sourceEncoding=UTF-8 \
-          -Dsonar.verbose=true \
           -Dsonar.scanner.skipJreProvisioning=true
 
     - name: SonarQube scan + quality gate (virida_app)
       if: ${{ github.event.inputs.target != 'virida_api' && hashFiles('virida_app/package.json') != '' }}
       working-directory: virida_app
-      timeout-minutes: 45
+      timeout-minutes: 30
       continue-on-error: true
       env:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-        SONAR_SCANNER_OPTS: "-Xmx640m -Xms256m -XX:+UseSerialGC"
-        SONAR_SCANNER_JAVA_OPTS: "-Xmx640m -Xms256m -XX:+UseSerialGC"
+        SONAR_SCANNER_OPTS: "-Xmx2048m -Xms512m"
+        SONAR_SCANNER_JAVA_OPTS: "-Xmx2048m -Xms512m"
       run: |
         set -euo pipefail
         SONAR_HOST_URL_CLEAN="$(printf '%s\n' "${SONAR_HOST_URL}" | sed -E 's#(https?://[^/]+).*#\1#')"
 
-        echo "[INFO] Starting scan for virida_app (timeout 45 min, advisory)..."
+        echo "[INFO] Starting scan for virida_app (timeout 30 min)..."
         env -u GITHUB_ACTIONS -u GITHUB_SERVER_URL -u GITHUB_REPOSITORY -u GITHUB_SHA \
           "${SONAR_SCANNER_DIR}/bin/sonar-scanner" \
           -Dsonar.host.url="${SONAR_HOST_URL_CLEAN}" \
@@ -200,11 +203,9 @@ jobs:
           -Dsonar.tests=src \
           -Dsonar.test.inclusions=src/**/*.test.ts,src/**/*.test.tsx,src/**/*.integration.test.tsx \
           -Dsonar.exclusions="dist/**,public/**,node_modules/**,coverage/**,**/*.d.ts,**/*.min.js,**/*.bundle.js,**/*.generated.*,src/assets/**" \
-          -Dsonar.javascript.node.maxspace=384 \
+          -Dsonar.javascript.node.maxspace=2048 \
           -Dsonar.scm.disabled=true \
-          -Dsonar.cpd.exclusions="**/*" \
           -Dsonar.sourceEncoding=UTF-8 \
-          -Dsonar.verbose=true \
           -Dsonar.scanner.skipJreProvisioning=true
 
     - name: Summary

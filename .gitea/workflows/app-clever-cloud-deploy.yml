@@ -1,0 +1,107 @@
+name: Deploy virida_app to Clever Cloud
+
+# Deploys the virida_app repository to its existing Clever Cloud app.
+#
+# One-time setup: add these secrets in Gitea Actions settings of this repo:
+#   CLEVER_APP_GIT_URL     Clever Cloud git remote for the virida_app frontend app
+#                          (copy from `clever status` or the console, e.g.:
+#                           git+ssh://git@push-n3-par-clevercloud-customers.services.clever-cloud.com/app_XXXXXXXX.git)
+#   CLEVER_APP_DEPLOY_REF  Usually 'master'
+#   CD_APP_ENABLED         Set to 'true' to actually deploy (safety switch)
+#
+# Triggered:
+#   - Manually via Gitea Actions UI (workflow_dispatch)
+#   - Weekly schedule (Monday 07:00 UTC) as drift correction
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Print plan but do not push'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+  schedule:
+    - cron: '0 7 * * 1'
+
+concurrency:
+  group: app-clevercloud-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: virida-host
+    name: Push virida_app to Clever Cloud
+    timeout-minutes: 10
+    if: ${{ secrets.GITEA != '' && secrets.CD_APP_ENABLED == 'true' }}
+
+    steps:
+    - name: Validate deploy secrets
+      env:
+        CLEVER_APP_GIT_URL: ${{ secrets.CLEVER_APP_GIT_URL }}
+        CLEVER_APP_DEPLOY_REF: ${{ secrets.CLEVER_APP_DEPLOY_REF }}
+      run: |
+        set -euo pipefail
+        if [ -z "${CLEVER_APP_GIT_URL:-}" ]; then
+          echo "::error::Missing secret CLEVER_APP_GIT_URL (Clever Cloud git remote for the virida_app app)."
+          exit 1
+        fi
+        if [ -z "${CLEVER_APP_DEPLOY_REF:-}" ]; then
+          echo "::error::Missing secret CLEVER_APP_DEPLOY_REF (usually 'master')."
+          exit 1
+        fi
+        echo "[OK] Deploy secrets present"
+
+    - name: Checkout virida_app
+      uses: actions/checkout@v4
+      with:
+        repository: Virida/virida_app
+        ref: master
+        path: virida_app
+        fetch-depth: 0
+        token: ${{ secrets.GITEA }}
+
+    - name: Sanity check repo
+      working-directory: virida_app
+      run: |
+        set -euo pipefail
+        if [ ! -f "package.json" ]; then
+          echo "::error::package.json missing — Clever Cloud deploy would fail."
+          exit 1
+        fi
+        if [ -d ".clevercloud" ]; then
+          echo "[OK] .clevercloud/ hooks directory present"
+        else
+          echo "::warning::No .clevercloud/ directory — build hooks might be missing."
+        fi
+        echo "[OK] HEAD = $(git rev-parse --short HEAD)"
+
+    - name: Push to Clever Cloud
+      working-directory: virida_app
+      env:
+        CLEVER_APP_GIT_URL: ${{ secrets.CLEVER_APP_GIT_URL }}
+        CLEVER_APP_DEPLOY_REF: ${{ secrets.CLEVER_APP_DEPLOY_REF }}
+        DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+      run: |
+        set -euo pipefail
+        git remote remove clevercloud 2>/dev/null || true
+        git remote add clevercloud "${CLEVER_APP_GIT_URL}"
+        if [ "${DRY_RUN}" = "true" ]; then
+          echo "[DRY RUN] would push HEAD to clevercloud:${CLEVER_APP_DEPLOY_REF}"
+          exit 0
+        fi
+        echo "[INFO] Pushing to Clever Cloud (this triggers a build on their side)..."
+        git push --force clevercloud "HEAD:${CLEVER_APP_DEPLOY_REF}"
+        echo "[OK] Push done — check Clever Cloud Console for build progress."
+
+    - name: Summary
+      if: always()
+      run: |
+        echo "========================================"
+        echo "  Deploy virida_app → Clever Cloud"
+        echo "========================================"
+        echo "Branch pushed: ${{ secrets.CLEVER_APP_DEPLOY_REF }}"
+        echo "Console:       https://console.clever-cloud.com"
