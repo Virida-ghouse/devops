@@ -2,6 +2,9 @@
 
 Ce dépôt orchestre la CI via **Gitea Actions** (workflow `/.gitea/workflows/ci-main.yml`) et inclut les assets Docker pour **SonarQube**.
 
+> Si le repo est en **pull mirror** (GitHub -> Gitea), les événements `push` ne déclenchent pas toujours les workflows en Gitea 1.22.x.
+> Les workflows principaux incluent donc un `schedule` toutes les 15 minutes pour conserver un mode "auto" sans désactiver le mirror.
+
 ### 1) Pré-requis runner (`virida-host`)
 
 Le workflow utilise `runs-on: virida-host`. Le runner doit fournir au minimum :

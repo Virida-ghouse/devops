@@ -5,6 +5,10 @@ on:
     branches: [ master ]
   pull_request:
     branches: [ master ]
+  # Mirror mode on Gitea does not emit push events for synced commits.
+  # This schedule keeps CI automatic even when repo is a pull-mirror.
+  schedule:
+    - cron: '*/15 * * * *'
   workflow_dispatch:
 
 env:

@@ -3,7 +3,8 @@ name: SonarQube Analysis (auto)
 # SonarQube runs in a SEPARATE workflow from ci-main.yml to keep the main
 # pipeline fast. The Gitea Runner on Clever Cloud is expected to be at
 # least flavor M (4 GB RAM) for scans to complete reliably.
-#   - On every push to master (parallel with ci-main.yml, non-blocking)
+#   - On every push to master (when repository is writable)
+#   - Every 15 minutes (mirror-safe auto trigger)
 #   - Every Sunday at 03:00 UTC as a catch-all scheduled scan
 #   - On-demand via Gitea Actions UI (workflow_dispatch)
 #
@@ -14,6 +15,7 @@ on:
   push:
     branches: [ master ]
   schedule:
+    - cron: '*/15 * * * *'
     - cron: '0 3 * * 0'
   workflow_dispatch:
     inputs:
