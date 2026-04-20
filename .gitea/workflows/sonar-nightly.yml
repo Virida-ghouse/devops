@@ -23,11 +23,7 @@ on:
         description: 'Which project(s) to scan'
         required: false
         default: 'both'
-        type: choice
-        options:
-          - both
-          - virida_api
-          - virida_app
+        # Keep input schema minimal for Gitea 1.22 compatibility.
 
 # Cancel any in-flight Sonar run when a new push arrives. Keeps the runner
 # free for the latest code and avoids scan queues on the single-slot CC runner.
