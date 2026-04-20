@@ -783,6 +783,15 @@ jobs:
         mv "/tmp/sonar-scanner-${SONAR_SCANNER_VERSION}-linux-x64" "${SONAR_SCANNER_DIR}"
         "${SONAR_SCANNER_DIR}/bin/sonar-scanner" --version
 
+    - name: Runner resources (preflight)
+      if: ${{ hashFiles('virida_api/package.json') != '' }}
+      run: |
+        echo "===== Runner RAM/CPU/Disk ====="
+        free -m 2>/dev/null || cat /proc/meminfo | head -5
+        echo "CPUs: $(nproc 2>/dev/null || echo '?')"
+        df -h . 2>/dev/null | head -5
+        echo "==============================="
+
     - name: SonarQube scan + quality gate (virida_api)
       if: ${{ hashFiles('virida_api/package.json') != '' }}
       working-directory: virida_api
@@ -790,11 +799,14 @@ jobs:
       env:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-        # Heap sizing for Clever Cloud runner (~1-2 GB RAM):
-        # 512m was too tight (GC thrashing → 20m timeout)
-        # 1024m gives the scanner room to progress; SerialGC keeps footprint low.
-        SONAR_SCANNER_OPTS: "-Xmx1024m -XX:+UseSerialGC"
-        SONAR_SCANNER_JAVA_OPTS: "-Xmx1024m -XX:+UseSerialGC"
+        # Heap sizing for Clever Cloud runner (~1 GB total RAM shared with act_runner):
+        # - 512m → GC thrash, 20min timeout
+        # - 1024m → OOM/swap with runner overhead, scanner hangs silently
+        # - 640m + verbose GC logs → actual sweet spot on CC flavor S.
+        # If this still hangs, the culprit is plugin download (SONAR_HOST_URL network latency),
+        # not memory. We print -XX:+PrintGCDetails to diagnose clearly.
+        SONAR_SCANNER_OPTS: "-Xmx640m -Xms256m -XX:+UseSerialGC -XX:+PrintGCDetails -XX:+PrintGCDateStamps"
+        SONAR_SCANNER_JAVA_OPTS: "-Xmx640m -Xms256m -XX:+UseSerialGC"
       run: |
         set -euo pipefail
 
@@ -867,10 +879,13 @@ jobs:
           -Dsonar.test.inclusions=tests/**/* \
           -Dsonar.exclusions="node_modules/**,dist/**,build/**,coverage/**,**/*.min.js,**/*.bundle.js,prisma/migrations/**,**/*.generated.*" \
           -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
-          -Dsonar.javascript.node.maxspace=512 \
+          -Dsonar.javascript.node.maxspace=384 \
           -Dsonar.scm.disabled=true \
           -Dsonar.cpd.exclusions="**/*" \
-          -Dsonar.sourceEncoding=UTF-8
+          -Dsonar.sourceEncoding=UTF-8 \
+          -Dsonar.verbose=true \
+          -Dsonar.log.level=INFO \
+          -Dsonar.scanner.skipJreProvisioning=true
 
         REPORT=".scannerwork/report-task.txt"
         if [ ! -f "$REPORT" ]; then
@@ -922,8 +937,8 @@ jobs:
       env:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-        SONAR_SCANNER_OPTS: "-Xmx1024m -XX:+UseSerialGC"
-        SONAR_SCANNER_JAVA_OPTS: "-Xmx1024m -XX:+UseSerialGC"
+        SONAR_SCANNER_OPTS: "-Xmx640m -Xms256m -XX:+UseSerialGC -XX:+PrintGCDetails -XX:+PrintGCDateStamps"
+        SONAR_SCANNER_JAVA_OPTS: "-Xmx640m -Xms256m -XX:+UseSerialGC"
       run: |
         set -euo pipefail
 
@@ -991,10 +1006,13 @@ jobs:
           -Dsonar.tests=src \
           -Dsonar.test.inclusions=src/**/*.test.ts,src/**/*.test.tsx,src/**/*.integration.test.tsx \
           -Dsonar.exclusions="dist/**,public/**,node_modules/**,coverage/**,**/*.d.ts,**/*.min.js,**/*.bundle.js,**/*.generated.*,src/assets/**" \
-          -Dsonar.javascript.node.maxspace=512 \
+          -Dsonar.javascript.node.maxspace=384 \
           -Dsonar.scm.disabled=true \
           -Dsonar.cpd.exclusions="**/*" \
-          -Dsonar.sourceEncoding=UTF-8
+          -Dsonar.sourceEncoding=UTF-8 \
+          -Dsonar.verbose=true \
+          -Dsonar.log.level=INFO \
+          -Dsonar.scanner.skipJreProvisioning=true
 
         REPORT=".scannerwork/report-task.txt"
         if [ ! -f "$REPORT" ]; then
