@@ -1,15 +1,10 @@
 name: SonarQube Analysis (auto)
 
-# SonarQube runs in a SEPARATE workflow from ci-main.yml to keep the main
-# pipeline fast. The Gitea Runner on Clever Cloud is expected to be at
-# least flavor M (4 GB RAM) for scans to complete reliably.
-#   - On every push to master (when repository is writable)
-#   - Every 15 minutes (mirror-safe auto trigger)
-#   - Every Sunday at 03:00 UTC as a catch-all scheduled scan
-#   - On-demand via Gitea Actions UI (workflow_dispatch)
-#
-# Concurrency ensures that a new push cancels the previous Sonar run —
-# no need to waste runner slots on outdated scans.
+# Gitea 1.22 compatible Sonar workflow:
+# - minimal trigger schema
+# - no advanced input typing
+# - no concurrency block
+# - mirror-safe schedule
 
 on:
   push:
@@ -18,47 +13,38 @@ on:
     - cron: '*/15 * * * *'
     - cron: '0 3 * * 0'
   workflow_dispatch:
-    inputs:
-      target:
-        description: 'Which project(s) to scan'
-        required: false
-        default: 'both'
-        # Keep input schema minimal for Gitea 1.22 compatibility.
-
-# Cancel any in-flight Sonar run when a new push arrives. Keeps the runner
-# free for the latest code and avoids scan queues on the single-slot CC runner.
-concurrency:
-  group: sonar-${{ github.ref }}
-  cancel-in-progress: true
 
 env:
   NODE_VERSION: '20.19.0'
-  SONAR_SCANNER_VERSION: "8.0.1.6346"
-  SONAR_SCANNER_DIR: "/tmp/sonar-scanner"
-  NPM_CI_FALLBACK_INSTALL: "true"
+  SONAR_SCANNER_VERSION: '8.0.1.6346'
+  SONAR_SCANNER_DIR: '/tmp/sonar-scanner'
 
 jobs:
   sonarqube:
     runs-on: virida-host
     name: SonarQube Analysis
-    # No dependency on the main CI — this workflow is standalone.
+    timeout-minutes: 45
 
     steps:
-    - name: Vérifier les secrets Sonar
+    - name: Validate required secrets
       run: |
+        set -euo pipefail
+        if [ -z "${{ secrets.GITEA }}" ]; then
+          echo "::error::Missing secret GITEA"
+          exit 1
+        fi
         if [ -z "${{ secrets.SONAR_TOKEN }}" ] || [ -z "${{ secrets.SONAR_HOST_URL }}" ]; then
-          echo "::error::Secrets Sonar manquants: SONAR_TOKEN et/ou SONAR_HOST_URL"
+          echo "::error::Missing SONAR_TOKEN and/or SONAR_HOST_URL"
           exit 1
         fi
 
-    - name: Checkout code
+    - name: Checkout devops repo
       uses: actions/checkout@v4
       with:
         token: ${{ secrets.GITEA }}
         submodules: false
 
     - name: Checkout virida_api
-      if: ${{ github.event.inputs.target != 'virida_app' }}
       uses: actions/checkout@v4
       with:
         repository: Virida/virida_api
@@ -67,7 +53,6 @@ jobs:
         token: ${{ secrets.GITEA }}
 
     - name: Checkout virida_app
-      if: ${{ github.event.inputs.target != 'virida_api' }}
       uses: actions/checkout@v4
       with:
         repository: Virida/virida_app
@@ -80,47 +65,38 @@ jobs:
       with:
         node-version: ${{ env.NODE_VERSION }}
 
-    - name: Install + test backend (generate coverage)
-      if: ${{ github.event.inputs.target != 'virida_app' && hashFiles('virida_api/package.json') != '' }}
+    - name: Install backend deps + coverage
       working-directory: virida_api
       env:
         NODE_OPTIONS: --no-warnings
       run: |
+        set -euo pipefail
         npm ci
         export DATABASE_URL="postgresql://user:pass@localhost:5432/virida?schema=public"
         npx prisma generate
         npm test -- --ci --runInBand --coverage
 
-    - name: Install + test frontend
-      if: ${{ github.event.inputs.target != 'virida_api' && hashFiles('virida_app/package.json') != '' }}
+    - name: Install frontend deps + tests
       working-directory: virida_app
-      timeout-minutes: 15
       env:
         NODE_OPTIONS: --no-warnings
-        CI: "true"
+        CI: 'true'
       run: |
-        set -e
+        set -euo pipefail
         if npm ci --ignore-scripts; then
           echo "[OK] npm ci"
         else
-          if [ "${NPM_CI_FALLBACK_INSTALL}" = "true" ]; then
-            echo "[WARN] npm ci failed (lockfile mismatch). Falling back to npm install."
-            npm install --ignore-scripts
-          else
-            exit 1
-          fi
+          echo "::warning::npm ci failed, fallback to npm install"
+          npm install --ignore-scripts
         fi
-        npm test || echo "::warning::Frontend tests failed — scan will proceed without test report"
+        npm test || echo "::warning::Frontend tests failed — continuing scan"
 
-    - name: Install SonarScanner CLI (no Docker)
-      env:
-        SONAR_SCANNER_VERSION: ${{ env.SONAR_SCANNER_VERSION }}
-        SONAR_SCANNER_DIR: ${{ env.SONAR_SCANNER_DIR }}
+    - name: Install SonarScanner CLI
       run: |
         set -euo pipefail
-        SONAR_SCANNER_URL="https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-${SONAR_SCANNER_VERSION}-linux-x64.zip"
-        curl -fsSLo /tmp/sonar-scanner.zip "${SONAR_SCANNER_URL}"
-        curl -fsSLo /tmp/sonar-scanner.zip.sha256 "${SONAR_SCANNER_URL}.sha256"
+        URL="https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-${SONAR_SCANNER_VERSION}-linux-x64.zip"
+        curl -fsSLo /tmp/sonar-scanner.zip "${URL}"
+        curl -fsSLo /tmp/sonar-scanner.zip.sha256 "${URL}.sha256"
         EXPECTED_SHA="$(awk '{print $1}' /tmp/sonar-scanner.zip.sha256)"
         ACTUAL_SHA="$(shasum -a 256 /tmp/sonar-scanner.zip | awk '{print $1}')"
         if [ -z "${EXPECTED_SHA}" ] || [ "${EXPECTED_SHA}" != "${ACTUAL_SHA}" ]; then
@@ -132,41 +108,22 @@ jobs:
         mv "/tmp/sonar-scanner-${SONAR_SCANNER_VERSION}-linux-x64" "${SONAR_SCANNER_DIR}"
         "${SONAR_SCANNER_DIR}/bin/sonar-scanner" --version
 
-    - name: Runner resources (preflight)
-      run: |
-        echo "===== Runner RAM/CPU/Disk ====="
-        free -m 2>/dev/null || cat /proc/meminfo | head -5
-        echo "CPUs: $(nproc 2>/dev/null || echo '?')"
-        df -h . 2>/dev/null | head -5
-        echo "==============================="
-
-    # Tuning for runner flavor M (4 GB RAM):
-    #   - Java scanner heap: 2 GB (was 640m on XS flavor)
-    #   - Node.js workers:   2 GB (was 384m on XS flavor)
-    #   - Default G1GC (SerialGC was a low-RAM hack, no longer needed)
-    #   - continue-on-error kept as safety net; remove once stable
-    - name: SonarQube scan + quality gate (virida_api)
-      if: ${{ github.event.inputs.target != 'virida_app' && hashFiles('virida_api/package.json') != '' }}
+    - name: Sonar scan virida_api
       working-directory: virida_api
-      timeout-minutes: 30
-      continue-on-error: true
       env:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-        SONAR_SCANNER_OPTS: "-Xmx2048m -Xms512m"
-        SONAR_SCANNER_JAVA_OPTS: "-Xmx2048m -Xms512m"
+        SONAR_SCANNER_OPTS: '-Xmx2048m -Xms512m'
+        SONAR_SCANNER_JAVA_OPTS: '-Xmx2048m -Xms512m'
       run: |
         set -euo pipefail
         SONAR_TOKEN_CLEAN="$(printf '%s' "${SONAR_TOKEN}" | tr -d '\r\n')"
         SONAR_HOST_URL_CLEAN="$(printf '%s' "${SONAR_HOST_URL}" | tr -d '\r\n' | sed -E 's#(https?://[^/]+).*#\1#')"
         if [ -z "${SONAR_TOKEN_CLEAN}" ]; then
-          echo "::error::SONAR_TOKEN is empty after trimming whitespace/newlines."
+          echo "::error::SONAR_TOKEN empty after trim"
           exit 1
         fi
-
-        echo "[INFO] Starting scan for virida_api (timeout 30 min)..."
-        env -u GITHUB_ACTIONS -u GITHUB_SERVER_URL -u GITHUB_REPOSITORY -u GITHUB_SHA \
-          "${SONAR_SCANNER_DIR}/bin/sonar-scanner" \
+        "${SONAR_SCANNER_DIR}/bin/sonar-scanner" \
           -Dsonar.host.url="${SONAR_HOST_URL_CLEAN}" \
           -Dsonar.token="${SONAR_TOKEN_CLEAN}" \
           -Dsonar.projectKey=virida_api \
@@ -174,43 +131,37 @@ jobs:
           -Dsonar.sources=src \
           -Dsonar.tests=tests \
           -Dsonar.test.inclusions=tests/**/* \
-          -Dsonar.exclusions="node_modules/**,dist/**,build/**,coverage/**,**/*.min.js,**/*.bundle.js,prisma/migrations/**,**/*.generated.*" \
+          -Dsonar.exclusions='node_modules/**,dist/**,build/**,coverage/**,**/*.min.js,**/*.bundle.js,prisma/migrations/**,**/*.generated.*' \
           -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
           -Dsonar.javascript.node.maxspace=2048 \
           -Dsonar.scm.disabled=true \
           -Dsonar.sourceEncoding=UTF-8 \
           -Dsonar.scanner.skipJreProvisioning=true
 
-    - name: SonarQube scan + quality gate (virida_app)
-      if: ${{ github.event.inputs.target != 'virida_api' && hashFiles('virida_app/package.json') != '' }}
+    - name: Sonar scan virida_app
       working-directory: virida_app
-      timeout-minutes: 30
-      continue-on-error: true
       env:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-        SONAR_SCANNER_OPTS: "-Xmx2048m -Xms512m"
-        SONAR_SCANNER_JAVA_OPTS: "-Xmx2048m -Xms512m"
+        SONAR_SCANNER_OPTS: '-Xmx2048m -Xms512m'
+        SONAR_SCANNER_JAVA_OPTS: '-Xmx2048m -Xms512m'
       run: |
         set -euo pipefail
         SONAR_TOKEN_CLEAN="$(printf '%s' "${SONAR_TOKEN}" | tr -d '\r\n')"
         SONAR_HOST_URL_CLEAN="$(printf '%s' "${SONAR_HOST_URL}" | tr -d '\r\n' | sed -E 's#(https?://[^/]+).*#\1#')"
         if [ -z "${SONAR_TOKEN_CLEAN}" ]; then
-          echo "::error::SONAR_TOKEN is empty after trimming whitespace/newlines."
+          echo "::error::SONAR_TOKEN empty after trim"
           exit 1
         fi
-
-        echo "[INFO] Starting scan for virida_app (timeout 30 min)..."
-        env -u GITHUB_ACTIONS -u GITHUB_SERVER_URL -u GITHUB_REPOSITORY -u GITHUB_SHA \
-          "${SONAR_SCANNER_DIR}/bin/sonar-scanner" \
+        "${SONAR_SCANNER_DIR}/bin/sonar-scanner" \
           -Dsonar.host.url="${SONAR_HOST_URL_CLEAN}" \
           -Dsonar.token="${SONAR_TOKEN_CLEAN}" \
           -Dsonar.projectKey=virida_app \
           -Dsonar.projectName=virida_app \
           -Dsonar.sources=src \
           -Dsonar.tests=src \
-          -Dsonar.test.inclusions=src/**/*.test.ts,src/**/*.test.tsx,src/**/*.integration.test.tsx \
-          -Dsonar.exclusions="dist/**,public/**,node_modules/**,coverage/**,**/*.d.ts,**/*.min.js,**/*.bundle.js,**/*.generated.*,src/assets/**" \
+          -Dsonar.test.inclusions='src/**/*.test.ts,src/**/*.test.tsx,src/**/*.integration.test.tsx' \
+          -Dsonar.exclusions='dist/**,public/**,node_modules/**,coverage/**,**/*.d.ts,**/*.min.js,**/*.bundle.js,**/*.generated.*,src/assets/**' \
           -Dsonar.javascript.node.maxspace=2048 \
           -Dsonar.scm.disabled=true \
           -Dsonar.sourceEncoding=UTF-8 \
@@ -220,9 +171,6 @@ jobs:
       if: always()
       run: |
         echo "========================================"
-        echo "  SonarQube nightly scan finished"
+        echo "  SonarQube scan finished"
         echo "========================================"
-        echo "Results are published to SonarQube server:"
-        echo "  ${{ secrets.SONAR_HOST_URL }}"
-        echo ""
-        echo "If a scan timed out, check SonarQube's Background Tasks page."
+        echo "Results: ${{ secrets.SONAR_HOST_URL }}"
