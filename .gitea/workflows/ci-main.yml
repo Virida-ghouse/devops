@@ -684,13 +684,15 @@ jobs:
         echo "[OK] Backend build successful"
 
   # ========================================
-  # SONARQUBE ANALYSIS — moved out of the main CI
+  # SONARQUBE ANALYSIS — runs in parallel (non-blocking)
   # ========================================
   # Sonar scans are too slow/heavy for the Clever Cloud runner (~1 GB RAM) to
-  # run on every push without destabilizing the pipeline. They now live in
-  # .gitea/workflows/sonar-nightly.yml, which runs:
-  #   - Every Sunday 03:00 UTC (scheduled)
+  # run synchronously without destabilizing the pipeline. They live in
+  # .gitea/workflows/sonar-nightly.yml, which triggers:
+  #   - Automatically on every push to master (parallel, non-blocking)
+  #   - Every Sunday 03:00 UTC (scheduled catch-all)
   #   - On-demand via Gitea Actions > "Run workflow" (workflow_dispatch)
+  # Concurrency is enabled: a new push cancels the previous Sonar run.
   # For a local fast scan: scripts/sonar-scan-local.sh
 
   # ========================================
@@ -731,8 +733,8 @@ jobs:
         report "Test Backend"   "${{ needs.test-backend.result }}"   true
         report "Build"          "${{ needs.build.result }}"          true
         echo ""
-        echo "  ℹ️  SonarQube runs in a separate workflow (sonar-nightly.yml)"
-        echo "     Trigger it manually from Gitea Actions or wait for the weekly schedule."
+        echo "  ℹ️  SonarQube runs automatically in parallel (sonar-nightly.yml)"
+        echo "     Check its run status in the Actions tab — it doesn't block this pipeline."
         echo ""
         echo "External repos (best-effort):"
         report "Test EVE"       "${{ needs.test-eve.result }}"       false

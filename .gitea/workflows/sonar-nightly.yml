@@ -1,17 +1,19 @@
-name: SonarQube Analysis (nightly / on-demand)
+name: SonarQube Analysis (auto)
 
-# SonarQube scans are resource-heavy and slow on the Clever Cloud runner
-# (~1 GB RAM). Running them in the main CI makes the whole pipeline unreliable.
-# This workflow runs Sonar separately:
-#   - On-demand: trigger manually from Gitea Actions UI (workflow_dispatch)
-#   - Scheduled: every Sunday at 03:00 UTC (off-hours)
+# SonarQube runs in a SEPARATE workflow from ci-main.yml because it's
+# resource-heavy on the Clever Cloud runner (~1 GB RAM) and would otherwise
+# block the pipeline. It now runs automatically:
+#   - On every push to master (parallel with ci-main.yml, non-blocking)
+#   - Every Sunday at 03:00 UTC as a catch-all scheduled scan
+#   - On-demand via Gitea Actions UI (workflow_dispatch)
 #
-# The main CI (ci-main.yml) no longer depends on Sonar, so your build stays
-# green as long as code quality checks are not the blocker.
+# Concurrency ensures that a new push cancels the previous Sonar run —
+# no need to waste runner slots on outdated scans.
 
 on:
+  push:
+    branches: [ master ]
   schedule:
-    # Every Sunday at 03:00 UTC
     - cron: '0 3 * * 0'
   workflow_dispatch:
     inputs:
@@ -24,6 +26,12 @@ on:
           - both
           - virida_api
           - virida_app
+
+# Cancel any in-flight Sonar run when a new push arrives. Keeps the runner
+# free for the latest code and avoids scan queues on the single-slot CC runner.
+concurrency:
+  group: sonar-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   NODE_VERSION: '20.19.0'
