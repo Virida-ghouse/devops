@@ -89,7 +89,11 @@ jobs:
           echo "::warning::npm ci failed, fallback to npm install"
           npm install --ignore-scripts
         fi
-        npm test || echo "::warning::Frontend tests failed — continuing scan"
+        if npm run -s test:coverage; then
+          echo "[OK] Frontend coverage generated"
+        else
+          echo "::warning::Frontend tests/coverage failed — scan will proceed without coverage report"
+        fi
 
     - name: Install SonarScanner CLI
       run: |
@@ -162,7 +166,9 @@ jobs:
           -Dsonar.projectKey=virida_app \
           -Dsonar.projectName=virida_app \
           -Dsonar.sources=src \
+          -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
           -Dsonar.exclusions='dist/**,public/**,node_modules/**,coverage/**,**/*.d.ts,**/*.min.js,**/*.bundle.js,**/*.generated.*,src/assets/**,src/**/*.test.ts,src/**/*.test.tsx,src/**/*.integration.test.tsx' \
+          -Dsonar.coverage.exclusions='src/components/**,src/App.tsx,src/main.tsx,src/contexts/**,src/theme/**,src/data/**,src/auth/**,src/vite-env.d.ts,src/types/**' \
           -Dsonar.javascript.node.maxspace=1536 \
           -Dsonar.scm.disabled=true \
           -Dsonar.sourceEncoding=UTF-8 \
