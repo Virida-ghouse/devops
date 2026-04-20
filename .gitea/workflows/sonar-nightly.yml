@@ -145,8 +145,9 @@ jobs:
       env:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-        SONAR_SCANNER_OPTS: '-Xmx512m -Xms128m'
-        SONAR_SCANNER_JAVA_OPTS: '-Xmx512m -Xms128m'
+        # Runner now has enough RAM; raise limits for TS analysis stability.
+        SONAR_SCANNER_OPTS: '-Xmx1024m -Xms256m'
+        SONAR_SCANNER_JAVA_OPTS: '-Xmx1024m -Xms256m'
       run: |
         set -euo pipefail
         SONAR_TOKEN_CLEAN="$(printf '%s' "${SONAR_TOKEN}" | tr -d '\r\n')"
@@ -162,7 +163,7 @@ jobs:
           -Dsonar.projectName=virida_app \
           -Dsonar.sources=src \
           -Dsonar.exclusions='dist/**,public/**,node_modules/**,coverage/**,**/*.d.ts,**/*.min.js,**/*.bundle.js,**/*.generated.*,src/assets/**,src/**/*.test.ts,src/**/*.test.tsx,src/**/*.integration.test.tsx' \
-          -Dsonar.javascript.node.maxspace=512 \
+          -Dsonar.javascript.node.maxspace=1536 \
           -Dsonar.scm.disabled=true \
           -Dsonar.sourceEncoding=UTF-8 \
           -Dsonar.scanner.skipJreProvisioning=true
