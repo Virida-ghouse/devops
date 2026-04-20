@@ -161,13 +161,18 @@ jobs:
         SONAR_SCANNER_JAVA_OPTS: "-Xmx2048m -Xms512m"
       run: |
         set -euo pipefail
-        SONAR_HOST_URL_CLEAN="$(printf '%s\n' "${SONAR_HOST_URL}" | sed -E 's#(https?://[^/]+).*#\1#')"
+        SONAR_TOKEN_CLEAN="$(printf '%s' "${SONAR_TOKEN}" | tr -d '\r\n')"
+        SONAR_HOST_URL_CLEAN="$(printf '%s' "${SONAR_HOST_URL}" | tr -d '\r\n' | sed -E 's#(https?://[^/]+).*#\1#')"
+        if [ -z "${SONAR_TOKEN_CLEAN}" ]; then
+          echo "::error::SONAR_TOKEN is empty after trimming whitespace/newlines."
+          exit 1
+        fi
 
         echo "[INFO] Starting scan for virida_api (timeout 30 min)..."
         env -u GITHUB_ACTIONS -u GITHUB_SERVER_URL -u GITHUB_REPOSITORY -u GITHUB_SHA \
           "${SONAR_SCANNER_DIR}/bin/sonar-scanner" \
           -Dsonar.host.url="${SONAR_HOST_URL_CLEAN}" \
-          -Dsonar.token="${SONAR_TOKEN}" \
+          -Dsonar.token="${SONAR_TOKEN_CLEAN}" \
           -Dsonar.projectKey=virida_api \
           -Dsonar.projectName=virida_api \
           -Dsonar.sources=src \
@@ -192,13 +197,18 @@ jobs:
         SONAR_SCANNER_JAVA_OPTS: "-Xmx2048m -Xms512m"
       run: |
         set -euo pipefail
-        SONAR_HOST_URL_CLEAN="$(printf '%s\n' "${SONAR_HOST_URL}" | sed -E 's#(https?://[^/]+).*#\1#')"
+        SONAR_TOKEN_CLEAN="$(printf '%s' "${SONAR_TOKEN}" | tr -d '\r\n')"
+        SONAR_HOST_URL_CLEAN="$(printf '%s' "${SONAR_HOST_URL}" | tr -d '\r\n' | sed -E 's#(https?://[^/]+).*#\1#')"
+        if [ -z "${SONAR_TOKEN_CLEAN}" ]; then
+          echo "::error::SONAR_TOKEN is empty after trimming whitespace/newlines."
+          exit 1
+        fi
 
         echo "[INFO] Starting scan for virida_app (timeout 30 min)..."
         env -u GITHUB_ACTIONS -u GITHUB_SERVER_URL -u GITHUB_REPOSITORY -u GITHUB_SHA \
           "${SONAR_SCANNER_DIR}/bin/sonar-scanner" \
           -Dsonar.host.url="${SONAR_HOST_URL_CLEAN}" \
-          -Dsonar.token="${SONAR_TOKEN}" \
+          -Dsonar.token="${SONAR_TOKEN_CLEAN}" \
           -Dsonar.projectKey=virida_app \
           -Dsonar.projectName=virida_app \
           -Dsonar.sources=src \
