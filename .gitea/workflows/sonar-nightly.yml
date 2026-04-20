@@ -114,8 +114,8 @@ jobs:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         # Keep scanner + JS bridge memory below container limits on Gitea runner.
-        SONAR_SCANNER_OPTS: '-Xmx768m -Xms256m'
-        SONAR_SCANNER_JAVA_OPTS: '-Xmx768m -Xms256m'
+        SONAR_SCANNER_OPTS: '-Xmx512m -Xms128m'
+        SONAR_SCANNER_JAVA_OPTS: '-Xmx512m -Xms128m'
       run: |
         set -euo pipefail
         SONAR_TOKEN_CLEAN="$(printf '%s' "${SONAR_TOKEN}" | tr -d '\r\n')"
@@ -134,18 +134,19 @@ jobs:
           -Dsonar.test.inclusions=tests/**/* \
           -Dsonar.exclusions='node_modules/**,dist/**,build/**,coverage/**,**/*.min.js,**/*.bundle.js,prisma/migrations/**,**/*.generated.*' \
           -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
-          -Dsonar.javascript.node.maxspace=768 \
+          -Dsonar.javascript.node.maxspace=512 \
           -Dsonar.scm.disabled=true \
           -Dsonar.sourceEncoding=UTF-8 \
           -Dsonar.scanner.skipJreProvisioning=true
 
     - name: Sonar scan virida_app
       working-directory: virida_app
+      timeout-minutes: 20
       env:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-        SONAR_SCANNER_OPTS: '-Xmx768m -Xms256m'
-        SONAR_SCANNER_JAVA_OPTS: '-Xmx768m -Xms256m'
+        SONAR_SCANNER_OPTS: '-Xmx512m -Xms128m'
+        SONAR_SCANNER_JAVA_OPTS: '-Xmx512m -Xms128m'
       run: |
         set -euo pipefail
         SONAR_TOKEN_CLEAN="$(printf '%s' "${SONAR_TOKEN}" | tr -d '\r\n')"
@@ -160,10 +161,8 @@ jobs:
           -Dsonar.projectKey=virida_app \
           -Dsonar.projectName=virida_app \
           -Dsonar.sources=src \
-          -Dsonar.tests=src \
-          -Dsonar.test.inclusions='src/**/*.test.ts,src/**/*.test.tsx,src/**/*.integration.test.tsx' \
-          -Dsonar.exclusions='dist/**,public/**,node_modules/**,coverage/**,**/*.d.ts,**/*.min.js,**/*.bundle.js,**/*.generated.*,src/assets/**' \
-          -Dsonar.javascript.node.maxspace=768 \
+          -Dsonar.exclusions='dist/**,public/**,node_modules/**,coverage/**,**/*.d.ts,**/*.min.js,**/*.bundle.js,**/*.generated.*,src/assets/**,src/**/*.test.ts,src/**/*.test.tsx,src/**/*.integration.test.tsx' \
+          -Dsonar.javascript.node.maxspace=512 \
           -Dsonar.scm.disabled=true \
           -Dsonar.sourceEncoding=UTF-8 \
           -Dsonar.scanner.skipJreProvisioning=true
