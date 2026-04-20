@@ -18,6 +18,12 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# Screenshots / debug captures
+image*.png
+tchek*.png
+Capture*.png
+Screenshot*.png
 *~
 
 # Node modules (if any in root)
