@@ -1,0 +1,179 @@
+name: Deploy Touch IHM to Raspberry Pi
+
+# Builds virida_touch_ihm (React/Vite) and deploys the static dist/ to the
+# Raspberry Pi via SSH/rsync.
+#
+# Triggered:
+#   - Manually via Gitea Actions UI (workflow_dispatch) — preferred
+#   - Weekly schedule (Monday 04:00 UTC) as a drift-correction safety net
+#
+# Required secrets (Gitea Actions):
+#   GITEA                 PAT with read access to Virida/virida_touch_ihm
+#   RPI_SSH_HOST          e.g. 192.168.1.42  or  raspberrypi.local
+#   RPI_SSH_USER          e.g. pi
+#   RPI_SSH_PORT          default 22 (optional)
+#   RPI_SSH_KEY           Full PRIVATE SSH key content (the `id_ed25519` file
+#                         of a key whose public part is in ~/.ssh/authorized_keys
+#                         on the Pi).
+#   RPI_SSH_KNOWN_HOSTS   Output of `ssh-keyscan <host>` (optional but safer —
+#                         avoids StrictHostKeyChecking=no). Recommended.
+#   RPI_DEPLOY_PATH       Absolute path on the Pi, e.g. /var/www/virida-touch
+#   RPI_POST_DEPLOY_CMD   Optional: command to run after rsync, e.g.
+#                         "sudo systemctl restart virida-touch"
+#
+# If the secrets are missing the job exits early with a clear error.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Build only, do not deploy (test the build path)'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
+  schedule:
+    # Monday 04:00 UTC — drift correction if manual deploys were missed.
+    - cron: '0 4 * * 1'
+
+concurrency:
+  group: touch-ihm-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: virida-host
+    name: Build + deploy to RPi
+    timeout-minutes: 20
+    if: ${{ secrets.GITEA != '' }}
+
+    steps:
+    - name: Validate deploy secrets
+      if: ${{ github.event.inputs.dry_run != 'true' }}
+      env:
+        RPI_SSH_HOST: ${{ secrets.RPI_SSH_HOST }}
+        RPI_SSH_USER: ${{ secrets.RPI_SSH_USER }}
+        RPI_SSH_KEY: ${{ secrets.RPI_SSH_KEY }}
+        RPI_DEPLOY_PATH: ${{ secrets.RPI_DEPLOY_PATH }}
+      run: |
+        set -euo pipefail
+        missing=()
+        [ -z "${RPI_SSH_HOST:-}" ]    && missing+=("RPI_SSH_HOST")
+        [ -z "${RPI_SSH_USER:-}" ]    && missing+=("RPI_SSH_USER")
+        [ -z "${RPI_SSH_KEY:-}" ]     && missing+=("RPI_SSH_KEY")
+        [ -z "${RPI_DEPLOY_PATH:-}" ] && missing+=("RPI_DEPLOY_PATH")
+        if [ ${#missing[@]} -gt 0 ]; then
+          echo "::error::Missing Gitea Actions secrets: ${missing[*]}"
+          echo "::error::Add them in repo Settings > Actions > Secrets, then retry."
+          exit 1
+        fi
+        echo "[OK] Deploy secrets present"
+
+    - name: Checkout virida_touch_ihm (master)
+      uses: actions/checkout@v4
+      with:
+        repository: Virida/virida_touch_ihm
+        ref: master
+        path: virida_touch_ihm
+        token: ${{ secrets.GITEA }}
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.19.0'
+
+    - name: Install + build
+      working-directory: virida_touch_ihm
+      env:
+        NODE_OPTIONS: --max-old-space-size=1024 --no-warnings
+      run: |
+        set -euo pipefail
+        if [ ! -f "package.json" ]; then
+          echo "::error::No package.json found in virida_touch_ihm checkout."
+          exit 1
+        fi
+        if npm ci --ignore-scripts; then
+          echo "[OK] npm ci"
+        else
+          echo "[WARN] npm ci failed — falling back to npm install"
+          npm install --ignore-scripts
+        fi
+        npm run -s lint || echo "::warning::Lint failed (advisory, continuing)"
+        npm run build
+        if [ ! -d "dist" ]; then
+          echo "::error::Build produced no dist/ directory."
+          exit 1
+        fi
+        echo "[OK] Build output:"
+        ls -la dist/ | head -20
+
+    - name: Setup SSH agent
+      if: ${{ github.event.inputs.dry_run != 'true' }}
+      env:
+        RPI_SSH_KEY: ${{ secrets.RPI_SSH_KEY }}
+        RPI_SSH_HOST: ${{ secrets.RPI_SSH_HOST }}
+        RPI_SSH_KNOWN_HOSTS: ${{ secrets.RPI_SSH_KNOWN_HOSTS }}
+      run: |
+        set -euo pipefail
+        mkdir -p ~/.ssh
+        chmod 700 ~/.ssh
+
+        # Write private key
+        echo "${RPI_SSH_KEY}" > ~/.ssh/deploy_key
+        chmod 600 ~/.ssh/deploy_key
+
+        # known_hosts: prefer user-provided content, else fallback to ssh-keyscan.
+        if [ -n "${RPI_SSH_KNOWN_HOSTS:-}" ]; then
+          echo "${RPI_SSH_KNOWN_HOSTS}" > ~/.ssh/known_hosts
+          echo "[OK] known_hosts set from secret"
+        else
+          echo "::warning::RPI_SSH_KNOWN_HOSTS secret is empty — using ssh-keyscan (less secure)."
+          ssh-keyscan -H "${RPI_SSH_HOST}" >> ~/.ssh/known_hosts 2>/dev/null || {
+            echo "::error::ssh-keyscan failed — is the RPi reachable from the runner?"
+            exit 1
+          }
+        fi
+        chmod 644 ~/.ssh/known_hosts
+
+    - name: Rsync dist/ to Raspberry Pi
+      if: ${{ github.event.inputs.dry_run != 'true' }}
+      env:
+        RPI_SSH_HOST: ${{ secrets.RPI_SSH_HOST }}
+        RPI_SSH_USER: ${{ secrets.RPI_SSH_USER }}
+        RPI_SSH_PORT: ${{ secrets.RPI_SSH_PORT }}
+        RPI_DEPLOY_PATH: ${{ secrets.RPI_DEPLOY_PATH }}
+      run: |
+        set -euo pipefail
+        PORT="${RPI_SSH_PORT:-22}"
+        SSH_OPTS="-i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -p ${PORT}"
+
+        # Ensure remote directory exists
+        ssh ${SSH_OPTS} "${RPI_SSH_USER}@${RPI_SSH_HOST}" \
+          "mkdir -p '${RPI_DEPLOY_PATH}'"
+
+        echo "[INFO] Syncing virida_touch_ihm/dist/ -> ${RPI_SSH_USER}@${RPI_SSH_HOST}:${RPI_DEPLOY_PATH}"
+        rsync -avz --delete \
+          -e "ssh ${SSH_OPTS}" \
+          virida_touch_ihm/dist/ \
+          "${RPI_SSH_USER}@${RPI_SSH_HOST}:${RPI_DEPLOY_PATH}/"
+
+        echo "[OK] rsync complete"
+
+    - name: Post-deploy command (optional)
+      if: ${{ github.event.inputs.dry_run != 'true' && secrets.RPI_POST_DEPLOY_CMD != '' }}
+      env:
+        RPI_SSH_HOST: ${{ secrets.RPI_SSH_HOST }}
+        RPI_SSH_USER: ${{ secrets.RPI_SSH_USER }}
+        RPI_SSH_PORT: ${{ secrets.RPI_SSH_PORT }}
+        RPI_POST_DEPLOY_CMD: ${{ secrets.RPI_POST_DEPLOY_CMD }}
+      run: |
+        set -euo pipefail
+        PORT="${RPI_SSH_PORT:-22}"
+        echo "[INFO] Running post-deploy: ${RPI_POST_DEPLOY_CMD}"
+        ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -p "${PORT}" \
+          "${RPI_SSH_USER}@${RPI_SSH_HOST}" \
+          "${RPI_POST_DEPLOY_CMD}"
+
+    - name: Cleanup SSH key
+      if: always()
+      run: rm -f ~/.ssh/deploy_key

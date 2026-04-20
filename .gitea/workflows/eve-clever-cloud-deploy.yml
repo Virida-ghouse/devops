@@ -1,0 +1,99 @@
+name: Deploy virida-eve to Clever Cloud (Docker)
+
+# Deploys the virida-eve repository to a Clever Cloud app of type "docker".
+# Clever Cloud builds the Dockerfile on their side, bypassing the runner's
+# rootless Podman limitation entirely.
+#
+# One-time setup (manual, on Clever Cloud Console or CLI):
+#   1. Create a new app → Docker
+#   2. Set build & run settings if needed (CC_DOCKERFILE if Dockerfile is not at root)
+#   3. Copy the deployment git remote URL (git+ssh://... or https://...)
+#   4. Add the following secrets in Gitea Actions:
+#        CLEVER_EVE_GIT_URL       The git remote URL from step 3
+#        CLEVER_EVE_DEPLOY_REF    Usually 'master' or 'main'
+#        CD_EVE_ENABLED           Set to 'true' to actually deploy (safety switch)
+#
+# If CC_DOCKERFILE is not at repo root, configure it via Clever Cloud env vars
+# (not here): CC_DOCKERFILE=docker/Dockerfile
+#
+# Triggered:
+#   - Manually via Gitea Actions UI (workflow_dispatch) — preferred for now
+#   - Weekly schedule (Monday 05:00 UTC) as drift correction
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 5 * * 1'
+
+concurrency:
+  group: eve-clevercloud-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: virida-host
+    name: Push virida-eve to Clever Cloud
+    timeout-minutes: 10
+    if: ${{ secrets.GITEA != '' && secrets.CD_EVE_ENABLED == 'true' }}
+
+    steps:
+    - name: Validate deploy secrets
+      env:
+        CLEVER_EVE_GIT_URL: ${{ secrets.CLEVER_EVE_GIT_URL }}
+        CLEVER_EVE_DEPLOY_REF: ${{ secrets.CLEVER_EVE_DEPLOY_REF }}
+      run: |
+        set -euo pipefail
+        if [ -z "${CLEVER_EVE_GIT_URL:-}" ]; then
+          echo "::error::Missing secret CLEVER_EVE_GIT_URL (Clever Cloud git remote for the virida-eve app)."
+          exit 1
+        fi
+        if [ -z "${CLEVER_EVE_DEPLOY_REF:-}" ]; then
+          echo "::error::Missing secret CLEVER_EVE_DEPLOY_REF (usually 'master')."
+          exit 1
+        fi
+        echo "[OK] Deploy secrets present"
+
+    - name: Checkout virida-eve
+      uses: actions/checkout@v4
+      with:
+        repository: Virida/virida-eve
+        ref: main
+        path: virida-eve
+        # Full history needed so Clever Cloud can do proper git deploy.
+        fetch-depth: 0
+        token: ${{ secrets.GITEA }}
+
+    - name: Ensure Dockerfile is discoverable
+      working-directory: virida-eve
+      run: |
+        set -euo pipefail
+        if [ -f "Dockerfile" ]; then
+          echo "[OK] Dockerfile at repo root — no CC_DOCKERFILE override needed."
+        elif [ -f "docker/Dockerfile" ]; then
+          echo "::notice::Dockerfile is at docker/Dockerfile. Make sure the CC app has CC_DOCKERFILE=docker/Dockerfile set in its env vars."
+        else
+          echo "::warning::No Dockerfile found — Clever Cloud will fail to build. Aborting push."
+          exit 1
+        fi
+
+    - name: Push to Clever Cloud
+      working-directory: virida-eve
+      env:
+        CLEVER_EVE_GIT_URL: ${{ secrets.CLEVER_EVE_GIT_URL }}
+        CLEVER_EVE_DEPLOY_REF: ${{ secrets.CLEVER_EVE_DEPLOY_REF }}
+      run: |
+        set -euo pipefail
+        git remote remove clevercloud 2>/dev/null || true
+        git remote add clevercloud "${CLEVER_EVE_GIT_URL}"
+        echo "[INFO] Pushing to Clever Cloud (this triggers a Docker build on their side)..."
+        git push --force clevercloud "HEAD:${CLEVER_EVE_DEPLOY_REF}"
+        echo "[OK] Push done — check Clever Cloud Console for build progress."
+
+    - name: Summary
+      if: always()
+      run: |
+        echo "========================================"
+        echo "  Deploy virida-eve → Clever Cloud"
+        echo "========================================"
+        echo "Branch pushed: ${{ secrets.CLEVER_EVE_DEPLOY_REF }}"
+        echo "Check build logs on: https://console.clever-cloud.com"
