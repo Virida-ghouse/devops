@@ -113,8 +113,9 @@ jobs:
       env:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-        SONAR_SCANNER_OPTS: '-Xmx2048m -Xms512m'
-        SONAR_SCANNER_JAVA_OPTS: '-Xmx2048m -Xms512m'
+        # Keep scanner + JS bridge memory below container limits on Gitea runner.
+        SONAR_SCANNER_OPTS: '-Xmx768m -Xms256m'
+        SONAR_SCANNER_JAVA_OPTS: '-Xmx768m -Xms256m'
       run: |
         set -euo pipefail
         SONAR_TOKEN_CLEAN="$(printf '%s' "${SONAR_TOKEN}" | tr -d '\r\n')"
@@ -133,7 +134,7 @@ jobs:
           -Dsonar.test.inclusions=tests/**/* \
           -Dsonar.exclusions='node_modules/**,dist/**,build/**,coverage/**,**/*.min.js,**/*.bundle.js,prisma/migrations/**,**/*.generated.*' \
           -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
-          -Dsonar.javascript.node.maxspace=2048 \
+          -Dsonar.javascript.node.maxspace=768 \
           -Dsonar.scm.disabled=true \
           -Dsonar.sourceEncoding=UTF-8 \
           -Dsonar.scanner.skipJreProvisioning=true
@@ -143,8 +144,8 @@ jobs:
       env:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-        SONAR_SCANNER_OPTS: '-Xmx2048m -Xms512m'
-        SONAR_SCANNER_JAVA_OPTS: '-Xmx2048m -Xms512m'
+        SONAR_SCANNER_OPTS: '-Xmx768m -Xms256m'
+        SONAR_SCANNER_JAVA_OPTS: '-Xmx768m -Xms256m'
       run: |
         set -euo pipefail
         SONAR_TOKEN_CLEAN="$(printf '%s' "${SONAR_TOKEN}" | tr -d '\r\n')"
@@ -162,7 +163,7 @@ jobs:
           -Dsonar.tests=src \
           -Dsonar.test.inclusions='src/**/*.test.ts,src/**/*.test.tsx,src/**/*.integration.test.tsx' \
           -Dsonar.exclusions='dist/**,public/**,node_modules/**,coverage/**,**/*.d.ts,**/*.min.js,**/*.bundle.js,**/*.generated.*,src/assets/**' \
-          -Dsonar.javascript.node.maxspace=2048 \
+          -Dsonar.javascript.node.maxspace=768 \
           -Dsonar.scm.disabled=true \
           -Dsonar.sourceEncoding=UTF-8 \
           -Dsonar.scanner.skipJreProvisioning=true
