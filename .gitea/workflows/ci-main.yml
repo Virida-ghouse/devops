@@ -108,12 +108,22 @@ jobs:
         echo "Validating YAML configuration files..."
         python3 - <<'PY'
         import glob
+        import importlib
+        import subprocess
         import sys
-        try:
-            import yaml
-        except ModuleNotFoundError:
-            print("::error::PyYAML is missing on runner. Pre-bake python3-yaml/PyYAML in the runner image.")
-            sys.exit(1)
+        def load_yaml_or_install():
+            try:
+                return importlib.import_module("yaml")
+            except ModuleNotFoundError:
+                print("::warning::PyYAML missing on runner, attempting runtime install via pip.")
+                try:
+                    subprocess.check_call([sys.executable, "-m", "pip", "install", "--user", "PyYAML"])
+                except Exception as exc:
+                    print(f"::error::Unable to install PyYAML dynamically: {exc}")
+                    print("::error::Pre-bake python3-yaml/PyYAML in the runner image.")
+                    sys.exit(1)
+                return importlib.import_module("yaml")
+        yaml = load_yaml_or_install()
 
         files = sorted(glob.glob(".gitea/workflows/*.yml"))
         if not files:
@@ -156,7 +166,6 @@ jobs:
     runs-on: virida-host
     name: Test EVE (virida_eve)
     needs: [validate]
-    if: ${{ secrets.GITEA != '' }}
     env:
       STRICT_EXTERNAL_CHECKS: ${{ secrets.STRICT_EXTERNAL_CHECKS || 'true' }}
 
@@ -365,7 +374,6 @@ jobs:
     runs-on: virida-host
     name: Test Leafnode (leafnode)
     needs: [validate]
-    if: ${{ secrets.GITEA != '' }}
     env:
       STRICT_EXTERNAL_CHECKS: ${{ secrets.STRICT_EXTERNAL_CHECKS || 'true' }}
 
@@ -481,7 +489,6 @@ jobs:
     runs-on: virida-host
     name: Test Touch IHM (virida_touch_ihm)
     needs: [validate]
-    if: ${{ secrets.GITEA != '' }}
     env:
       STRICT_EXTERNAL_CHECKS: ${{ secrets.STRICT_EXTERNAL_CHECKS || 'true' }}
 
@@ -579,39 +586,47 @@ jobs:
       
     - *setup_node_step
 
-    - name: Check virida_app exists
-      id: check_frontend
-      run: |
-        if [ -d "virida_app" ] && [ -f "virida_app/package.json" ]; then
-          echo "exists=true" >> "$GITHUB_OUTPUT"
-        else
-          echo "exists=false" >> "$GITHUB_OUTPUT"
-          echo "[INFO] virida_app not present in this repo checkout; skipping frontend job."
-        fi
-        
     - &frontend_npm_ci_step
       name: Install frontend dependencies
       working-directory: virida_app
       run: |
         set -euo pipefail
         if [ ! -f "package.json" ]; then
-          echo "[INFO] No package.json in virida_app; skipping npm ci."
-          exit 0
+          echo "::error::Missing virida_app/package.json. Frontend checks cannot run."
+          exit 1
         fi
         npm ci --ignore-scripts
       
     - name: Lint code
-      if: steps.check_frontend.outputs.exists == 'true'
       working-directory: virida_app
-      run: npm run -s lint
+      run: |
+        set -euo pipefail
+        TMP_LOG="$(mktemp)"
+        set +e
+        npm run -s lint 2>&1 | tee "${TMP_LOG}"
+        RC=${PIPESTATUS[0]}
+        set -e
+        if [ "${RC}" -eq 0 ]; then
+          rm -f "${TMP_LOG}"
+          exit 0
+        fi
+        if grep -q "Invalid option '--ext'" "${TMP_LOG}" || grep -q "eslint.config.js" "${TMP_LOG}"; then
+          TARGET="."
+          if [ -d "src" ]; then TARGET="src"; fi
+          echo "::warning::Detected ESLint flat-config CLI incompatibility in npm lint script; retrying with direct eslint ${TARGET}."
+          npx eslint "${TARGET}"
+          rm -f "${TMP_LOG}"
+          exit 0
+        fi
+        echo "::error::Lint failed with an unexpected error."
+        rm -f "${TMP_LOG}"
+        exit "${RC}"
 
     - name: Run tests
-      if: steps.check_frontend.outputs.exists == 'true'
       working-directory: virida_app
       run: npm test
 
     - name: Build
-      if: steps.check_frontend.outputs.exists == 'true'
       working-directory: virida_app
       timeout-minutes: 15
       env:
@@ -633,23 +648,13 @@ jobs:
       
     - *setup_node_step
 
-    - name: Check virida_api exists
-      id: check_backend
-      run: |
-        if [ -d "virida_api" ] && [ -f "virida_api/package.json" ]; then
-          echo "exists=true" >> "$GITHUB_OUTPUT"
-        else
-          echo "exists=false" >> "$GITHUB_OUTPUT"
-          echo "[INFO] virida_api not present in this repo checkout; skipping backend job."
-        fi
-        
     - &backend_prepare_step
       name: Install backend dependencies + prisma generate
       run: |
         set -euo pipefail
         if [ ! -f "virida_api/package.json" ]; then
-          echo "[INFO] No package.json in virida_api; skipping backend prepare."
-          exit 0
+          echo "::error::Missing virida_api/package.json. Backend checks cannot run."
+          exit 1
         fi
         cd virida_api
         npm ci
@@ -657,7 +662,6 @@ jobs:
         npx prisma generate
 
     - name: Enforce real backend quality scripts
-      if: steps.check_backend.outputs.exists == 'true'
       working-directory: virida_api
       run: |
         set -euo pipefail
@@ -672,19 +676,37 @@ jobs:
         echo "[OK] Backend quality scripts are not placeholders."
       
     - name: Lint code
-      if: steps.check_backend.outputs.exists == 'true'
       working-directory: virida_api
-      run: npm run lint
+      run: |
+        set -euo pipefail
+        TMP_LOG="$(mktemp)"
+        set +e
+        npm run -s lint 2>&1 | tee "${TMP_LOG}"
+        RC=${PIPESTATUS[0]}
+        set -e
+        if [ "${RC}" -eq 0 ]; then
+          rm -f "${TMP_LOG}"
+          exit 0
+        fi
+        if grep -q "Invalid option '--ext'" "${TMP_LOG}" || grep -q "eslint.config.js" "${TMP_LOG}"; then
+          TARGET="."
+          if [ -d "src" ]; then TARGET="src"; fi
+          echo "::warning::Detected ESLint flat-config CLI incompatibility in npm lint script; retrying with direct eslint ${TARGET}."
+          npx eslint "${TARGET}"
+          rm -f "${TMP_LOG}"
+          exit 0
+        fi
+        echo "::error::Lint failed with an unexpected error."
+        rm -f "${TMP_LOG}"
+        exit "${RC}"
       
     - name: Run tests
-      if: steps.check_backend.outputs.exists == 'true'
       working-directory: virida_api
       env:
         NODE_OPTIONS: --no-warnings
       run: npm test -- --ci --runInBand
       
     - name: Build test
-      if: steps.check_backend.outputs.exists == 'true'
       working-directory: virida_api
       run: npm run build
 
@@ -706,26 +728,35 @@ jobs:
     - *frontend_npm_ci_step
 
     - name: Scan Frontend dependencies
-      if: ${{ hashFiles('virida_app/package.json') != '' }}
       working-directory: virida_app
       run: |
         set -euo pipefail
+        if [ ! -f "package.json" ]; then
+          echo "::error::Missing virida_app/package.json. Frontend audit cannot run."
+          exit 1
+        fi
         echo "--- npm audit (blocking on high/critical) ---"
         npm audit --audit-level=high
         
     - &backend_npm_ci_ignore_scripts_step
       name: Install backend dependencies (audit mode)
-      if: ${{ hashFiles('virida_api/package.json') != '' }}
       working-directory: virida_api
       run: |
         set -euo pipefail
+        if [ ! -f "package.json" ]; then
+          echo "::error::Missing virida_api/package.json. Backend audit install cannot run."
+          exit 1
+        fi
         npm ci --ignore-scripts
 
     - name: Scan Backend dependencies
-      if: ${{ hashFiles('virida_api/package.json') != '' }}
       working-directory: virida_api
       run: |
         set -euo pipefail
+        if [ ! -f "package.json" ]; then
+          echo "::error::Missing virida_api/package.json. Backend audit cannot run."
+          exit 1
+        fi
         echo "--- npm audit (blocking on high/critical) ---"
         npm audit --audit-level=high
 
@@ -856,22 +887,29 @@ jobs:
     - *frontend_npm_ci_step
 
     - name: Build Frontend
-      if: ${{ hashFiles('virida_app/package.json') != '' }}
       working-directory: virida_app
       timeout-minutes: 20
       env:
         VITE_API_URL: ${{ secrets.VITE_API_URL || '' }}
       run: |
         set -euo pipefail
+        if [ ! -f "package.json" ]; then
+          echo "::error::Missing virida_app/package.json. Frontend build cannot run."
+          exit 1
+        fi
         NODE_OPTIONS="--max-old-space-size=1536 --no-warnings" npm run build
         echo "[OK] Frontend build successful"
         
     - *backend_prepare_step
 
     - name: Build Backend
-      if: ${{ hashFiles('virida_api/package.json') != '' }}
       working-directory: virida_api
       run: |
+        set -euo pipefail
+        if [ ! -f "package.json" ]; then
+          echo "::error::Missing virida_api/package.json. Backend build cannot run."
+          exit 1
+        fi
         npm run build
         echo "[OK] Backend build successful"
 
@@ -882,9 +920,24 @@ jobs:
     runs-on: virida-host
     name: Sonar Quality Gate
     needs: [build]
-    if: ${{ secrets.SONAR_TOKEN != '' && secrets.SONAR_HOST_URL != '' && secrets.SONAR_HARD_GATE_ENABLED != 'false' }}
 
     steps:
+    - name: Validate Sonar gate configuration
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        SONAR_HARD_GATE_ENABLED: ${{ secrets.SONAR_HARD_GATE_ENABLED || 'true' }}
+      run: |
+        set -euo pipefail
+        if [ "${SONAR_HARD_GATE_ENABLED}" = "false" ]; then
+          echo "::error::SONAR_HARD_GATE_ENABLED=false is not allowed on main CI. Quality gate must run."
+          exit 1
+        fi
+        if [ -z "${SONAR_TOKEN:-}" ] || [ -z "${SONAR_HOST_URL:-}" ]; then
+          echo "::error::Missing SONAR_TOKEN and/or SONAR_HOST_URL. Quality gate cannot be skipped."
+          exit 1
+        fi
+
     - name: Check SonarQube project gates
       env:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
