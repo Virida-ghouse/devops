@@ -46,6 +46,10 @@ jobs:
           echo "::error::Missing SONAR_TOKEN and/or SONAR_HOST_URL"
           exit 1
         fi
+        if [ -z "${{ secrets.GH_TOKEN_MARKETPLACE }}" ]; then
+          echo "::error::Missing secret GH_TOKEN_MARKETPLACE for private marketplace repositories"
+          exit 1
+        fi
 
     - name: Enforce immutable external refs on main
       run: |
@@ -95,7 +99,7 @@ jobs:
         github-server-url: https://github.com
         ref: ${{ env.VIRIDA_MARKETPLACE_API_REF }}
         path: Virida_marketplace_api
-        token: ${{ secrets.GITHUB_TOKEN_MARKETPLACE || secrets.GITEA }}
+        token: ${{ secrets.GH_TOKEN_MARKETPLACE }}
 
     - name: Checkout Virida_marketplace_app
       uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -104,7 +108,7 @@ jobs:
         github-server-url: https://github.com
         ref: ${{ env.VIRIDA_MARKETPLACE_APP_REF }}
         path: Virida_marketplace_app
-        token: ${{ secrets.GITHUB_TOKEN_MARKETPLACE || secrets.GITEA }}
+        token: ${{ secrets.GH_TOKEN_MARKETPLACE }}
 
     - name: Checkout virida-eve
       uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4

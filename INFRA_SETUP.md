@@ -43,7 +43,7 @@ Ou via l'UI : `Console CC → app Gitea Runner → Scalability → min/max = M`.
 #### Checkout multi-repos (obligatoire)
 
 - `GITEA`: token d’accès permettant de cloner les repos `Virida/*` (**read-only obligatoire** sauf besoin explicite d’ecriture)
-- `GITHUB_TOKEN_MARKETPLACE` (recommande): token GitHub (scope repo read) pour cloner `Virida-ghouse/Virida_marketplace_api` et `Virida-ghouse/Virida_marketplace_app` si privés
+- `GH_TOKEN_MARKETPLACE` (obligatoire): token GitHub (scope repo read) pour cloner `Virida-ghouse/Virida_marketplace_api` et `Virida-ghouse/Virida_marketplace_app` (repos privés)
 - `VIRIDA_API_REF` (optionnel): ref immuable recommandee pour `Virida/virida_api` (tag ou commit SHA)
 - `VIRIDA_APP_REF` (optionnel): ref immuable recommandee pour `Virida/virida_app` (tag ou commit SHA)
 - `VIRIDA_MARKETPLACE_API_REF` (optionnel): ref immuable recommandee pour `Virida-ghouse/Virida_marketplace_api` (tag ou commit SHA)
