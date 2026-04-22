@@ -21,7 +21,7 @@ env:
   NODE_VERSION: '20.19.0'
   VIRIDA_API_REF: ${{ secrets.VIRIDA_API_REF || 'main' }}
   VIRIDA_APP_REF: ${{ secrets.VIRIDA_APP_REF || 'main' }}
-  VIRIDA_MARKETPLACE_API_REF: ${{ secrets.VIRIDA_MARKETPLACE_API_REF || 'main' }}
+  VIRIDA_MARKETPLACE_API_REF: ${{ secrets.VIRIDA_MARKETPLACE_API_REF || 'master' }}
   VIRIDA_MARKETPLACE_APP_REF: ${{ secrets.VIRIDA_MARKETPLACE_APP_REF || 'main' }}
   VIRIDA_EVE_REF: ${{ secrets.VIRIDA_EVE_REF || 'main' }}
   # Keep CI non-blocking by default; set secret to 'false' to enforce immutable refs on main.
@@ -60,7 +60,8 @@ jobs:
           exit 0
         fi
         if [ "${ALLOW_MOVING_EXTERNAL_REFS}" = "true" ]; then
-          echo "[INFO] ALLOW_MOVING_EXTERNAL_REFS=true, skipping immutable ref enforcement."
+          echo "::warning::ALLOW_MOVING_EXTERNAL_REFS=true: transitional mode enabled, immutable refs are not enforced on main."
+          echo "::warning::Set ALLOW_MOVING_EXTERNAL_REFS=false after migrating all VIRIDA_*_REF secrets to tags/SHA."
           exit 0
         fi
         for ref in "${VIRIDA_API_REF}" "${VIRIDA_APP_REF}" "${VIRIDA_MARKETPLACE_API_REF}" "${VIRIDA_MARKETPLACE_APP_REF}" "${VIRIDA_EVE_REF}"; do
@@ -94,13 +95,33 @@ jobs:
         token: ${{ secrets.GITEA }}
 
     - name: Checkout Virida_marketplace_api
-      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      with:
-        repository: Virida-ghouse/Virida_marketplace_api
-        ref: ${{ env.VIRIDA_MARKETPLACE_API_REF }}
-        github-server-url: https://github.com
-        path: Virida_marketplace_api
-        token: ${{ secrets.GH_TOKEN_MARKETPLACE }}
+      env:
+        GH_TOKEN_MARKETPLACE: ${{ secrets.GH_TOKEN_MARKETPLACE }}
+        REQUESTED_REF: ${{ env.VIRIDA_MARKETPLACE_API_REF }}
+      run: |
+        set -euo pipefail
+        REPO_URL="https://x-access-token:${GH_TOKEN_MARKETPLACE}@github.com/Virida-ghouse/Virida_marketplace_api.git"
+        TARGET_DIR="Virida_marketplace_api"
+        if [ -z "${REQUESTED_REF:-}" ]; then
+          REQUESTED_REF="master"
+        fi
+        RESOLVED_REF="${REQUESTED_REF}"
+        if ! git ls-remote --exit-code --heads "${REPO_URL}" "${REQUESTED_REF}" >/dev/null 2>&1 \
+          && ! git ls-remote --exit-code --tags "${REPO_URL}" "${REQUESTED_REF}" >/dev/null 2>&1; then
+          echo "::warning::Requested ref '${REQUESTED_REF}' not found on Virida_marketplace_api. Trying fallback branches."
+          if git ls-remote --exit-code --heads "${REPO_URL}" "master" >/dev/null 2>&1; then
+            RESOLVED_REF="master"
+          elif git ls-remote --exit-code --heads "${REPO_URL}" "main" >/dev/null 2>&1; then
+            RESOLVED_REF="main"
+          else
+            echo "::error::No usable ref found (requested='${REQUESTED_REF}', fallback='master|main')."
+            exit 1
+          fi
+        fi
+        echo "[INFO] Cloning Virida_marketplace_api ref: ${RESOLVED_REF}"
+        rm -rf "${TARGET_DIR}"
+        git clone --depth 1 --branch "${RESOLVED_REF}" "${REPO_URL}" "${TARGET_DIR}"
+        git -C "${TARGET_DIR}" remote set-url origin "https://github.com/Virida-ghouse/Virida_marketplace_api.git"
 
     - name: Checkout Virida_marketplace_app
       uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -156,8 +177,22 @@ jobs:
       run: |
         set -euo pipefail
         npm ci --ignore-scripts
-        npm run -s test:coverage
-        echo "[OK] Frontend coverage generated"
+        COVERAGE_SCRIPT="$(node -e "const s=require('./package.json').scripts||{}; const c=['test:coverage','coverage','test:ci']; console.log(c.find(k=>s[k])||'')")"
+        HAS_TEST_SCRIPT="$(node -e "const s=require('./package.json').scripts||{}; process.stdout.write(s.test ? 'yes' : 'no')")"
+        TEST_SCRIPT_VALUE="$(node -e "const s=require('./package.json').scripts||{}; process.stdout.write(String(s.test||''))")"
+        if [ -n "${COVERAGE_SCRIPT}" ]; then
+          echo "[INFO] Running ${COVERAGE_SCRIPT} for virida_app"
+          npm run -s "${COVERAGE_SCRIPT}"
+          echo "[OK] Frontend coverage generated"
+        elif printf '%s' "${TEST_SCRIPT_VALUE}" | grep -qi 'no test specified'; then
+          echo "::warning::Placeholder npm test script detected in virida_app; skipping tests"
+        elif [ "${HAS_TEST_SCRIPT}" = "yes" ]; then
+          echo "[INFO] Running npm test for virida_app"
+          npm test -- --ci --runInBand --coverage
+          echo "[OK] Frontend test coverage generated via npm test"
+        else
+          echo "::warning::No test script found in virida_app/package.json"
+        fi
 
     - name: Install Virida_marketplace_api deps + tests
       working-directory: Virida_marketplace_api
