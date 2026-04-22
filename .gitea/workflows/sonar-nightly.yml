@@ -3,19 +3,28 @@ name: SonarQube Analysis (auto)
 # Gitea 1.22 compatible Sonar workflow:
 # - minimal trigger schema
 # - no advanced input typing
-# - no concurrency block
+# - concurrency enabled to avoid overlap
 # - mirror-safe schedule
 
 on:
   push:
-    branches: [ master ]
+    branches: [ main, master ]
   schedule:
-    - cron: '*/15 * * * *'
-    - cron: '0 3 * * 0'
+    - cron: '0 3 * * *'
   workflow_dispatch:
+
+concurrency:
+  group: sonar-nightly-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   NODE_VERSION: '20.19.0'
+  VIRIDA_API_REF: ${{ secrets.VIRIDA_API_REF || 'main' }}
+  VIRIDA_APP_REF: ${{ secrets.VIRIDA_APP_REF || 'master' }}
+  VIRIDA_MARKETPLACE_API_REF: ${{ secrets.VIRIDA_MARKETPLACE_API_REF || 'main' }}
+  VIRIDA_MARKETPLACE_APP_REF: ${{ secrets.VIRIDA_MARKETPLACE_APP_REF || 'main' }}
+  VIRIDA_EVE_REF: ${{ secrets.VIRIDA_EVE_REF || 'main' }}
+  ALLOW_MOVING_EXTERNAL_REFS: ${{ secrets.ALLOW_MOVING_EXTERNAL_REFS || 'false' }}
   SONAR_SCANNER_VERSION: '8.0.1.6346'
   SONAR_SCANNER_DIR: '/tmp/sonar-scanner'
 
@@ -38,32 +47,90 @@ jobs:
           exit 1
         fi
 
+    - name: Enforce immutable external refs on main
+      run: |
+        set -euo pipefail
+        if [ "${GITHUB_REF_NAME:-}" != "main" ]; then
+          echo "[INFO] Not main branch; immutable ref policy is advisory only."
+          exit 0
+        fi
+        if [ "${ALLOW_MOVING_EXTERNAL_REFS}" = "true" ]; then
+          echo "[INFO] ALLOW_MOVING_EXTERNAL_REFS=true, skipping immutable ref enforcement."
+          exit 0
+        fi
+        for ref in "${VIRIDA_API_REF}" "${VIRIDA_APP_REF}" "${VIRIDA_MARKETPLACE_API_REF}" "${VIRIDA_MARKETPLACE_APP_REF}" "${VIRIDA_EVE_REF}"; do
+          if printf '%s' "$ref" | grep -Eq '^(main|master|develop|dev)$'; then
+            echo "::error::External refs must be immutable on main (tag or commit SHA), got branch ref: $ref"
+            exit 1
+          fi
+        done
+        echo "[OK] External refs are immutable on main."
+
     - name: Checkout devops repo
-      uses: actions/checkout@v4
+      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       with:
         token: ${{ secrets.GITEA }}
         submodules: false
 
     - name: Checkout virida_api
-      uses: actions/checkout@v4
+      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       with:
         repository: Virida/virida_api
-        ref: main
+        ref: ${{ env.VIRIDA_API_REF }}
         path: virida_api
         token: ${{ secrets.GITEA }}
 
     - name: Checkout virida_app
-      uses: actions/checkout@v4
+      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       with:
         repository: Virida/virida_app
-        ref: master
+        ref: ${{ env.VIRIDA_APP_REF }}
         path: virida_app
         token: ${{ secrets.GITEA }}
 
+    - name: Checkout Virida_marketplace_api
+      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      with:
+        repository: Virida-ghouse/Virida_marketplace_api
+        github-server-url: https://github.com
+        ref: ${{ env.VIRIDA_MARKETPLACE_API_REF }}
+        path: Virida_marketplace_api
+        token: ${{ secrets.GITHUB_TOKEN_MARKETPLACE || secrets.GITEA }}
+
+    - name: Checkout Virida_marketplace_app
+      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      with:
+        repository: Virida-ghouse/Virida_marketplace_app
+        github-server-url: https://github.com
+        ref: ${{ env.VIRIDA_MARKETPLACE_APP_REF }}
+        path: Virida_marketplace_app
+        token: ${{ secrets.GITHUB_TOKEN_MARKETPLACE || secrets.GITEA }}
+
+    - name: Checkout virida-eve
+      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      with:
+        repository: Virida/virida-eve
+        ref: ${{ env.VIRIDA_EVE_REF }}
+        path: virida-eve
+        token: ${{ secrets.GITEA }}
+
     - name: Setup Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
       with:
         node-version: ${{ env.NODE_VERSION }}
+        cache: npm
+        cache-dependency-path: |
+          virida_api/package-lock.json
+          virida_app/package-lock.json
+          Virida_marketplace_api/package-lock.json
+          Virida_marketplace_app/package-lock.json
+          virida-eve/package-lock.json
+
+    - name: Cache SonarScanner CLI
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      with:
+        path: ${{ env.SONAR_SCANNER_DIR }}
+        key: sonar-scanner-${{ env.SONAR_SCANNER_VERSION }}
 
     - name: Install backend deps + coverage
       working-directory: virida_api
@@ -83,21 +150,86 @@ jobs:
         CI: 'true'
       run: |
         set -euo pipefail
-        if npm ci --ignore-scripts; then
-          echo "[OK] npm ci"
+        npm ci --ignore-scripts
+        npm run -s test:coverage
+        echo "[OK] Frontend coverage generated"
+
+    - name: Install Virida_marketplace_api deps + tests
+      working-directory: Virida_marketplace_api
+      env:
+        NODE_OPTIONS: --no-warnings
+        CI: 'true'
+      run: |
+        set -euo pipefail
+        npm ci --ignore-scripts
+        COVERAGE_SCRIPT="$(node -e "const s=require('./package.json').scripts||{}; const c=['test:coverage','coverage','test:ci']; console.log(c.find(k=>s[k])||'')")"
+        HAS_TEST_SCRIPT="$(node -e "const s=require('./package.json').scripts||{}; process.stdout.write(s.test ? 'yes' : 'no')")"
+        if [ -n "${COVERAGE_SCRIPT}" ]; then
+          echo "[INFO] Running ${COVERAGE_SCRIPT} for Virida_marketplace_api"
+          npm run -s "${COVERAGE_SCRIPT}"
+        elif [ "${HAS_TEST_SCRIPT}" = "yes" ]; then
+          echo "[INFO] Running npm test for Virida_marketplace_api"
+          npm test -- --ci --runInBand --coverage
         else
-          echo "::warning::npm ci failed, fallback to npm install"
+          echo "::warning::No test script found in Virida_marketplace_api/package.json"
+        fi
+
+    - name: Install Virida_marketplace_app deps + tests
+      working-directory: Virida_marketplace_app
+      env:
+        NODE_OPTIONS: --no-warnings
+        CI: 'true'
+      run: |
+        set -euo pipefail
+        npm ci --ignore-scripts
+        COVERAGE_SCRIPT="$(node -e "const s=require('./package.json').scripts||{}; const c=['test:coverage','coverage','test:ci']; console.log(c.find(k=>s[k])||'')")"
+        HAS_TEST_SCRIPT="$(node -e "const s=require('./package.json').scripts||{}; process.stdout.write(s.test ? 'yes' : 'no')")"
+        if [ -n "${COVERAGE_SCRIPT}" ]; then
+          echo "[INFO] Running ${COVERAGE_SCRIPT} for Virida_marketplace_app"
+          npm run -s "${COVERAGE_SCRIPT}"
+        elif [ "${HAS_TEST_SCRIPT}" = "yes" ]; then
+          echo "[INFO] Running npm test for Virida_marketplace_app"
+          npm test -- --ci --runInBand --coverage
+        else
+          echo "::warning::No test script found in Virida_marketplace_app/package.json"
+        fi
+
+    - name: Install virida-eve deps + tests (best effort)
+      working-directory: virida-eve
+      env:
+        NODE_OPTIONS: --no-warnings
+        CI: 'true'
+      run: |
+        set -euo pipefail
+        if [ ! -f package.json ]; then
+          echo "[INFO] virida-eve has no package.json; skipping npm tests"
+          exit 0
+        fi
+        if [ -f package-lock.json ]; then
+          npm ci --ignore-scripts
+        else
           npm install --ignore-scripts
         fi
-        if npm run -s test:coverage; then
-          echo "[OK] Frontend coverage generated"
+        COVERAGE_SCRIPT="$(node -e "const s=require('./package.json').scripts||{}; const c=['test:coverage','coverage','test:ci']; console.log(c.find(k=>s[k])||'')")"
+        HAS_TEST_SCRIPT="$(node -e "const s=require('./package.json').scripts||{}; process.stdout.write(s.test ? 'yes' : 'no')")"
+        if [ -n "${COVERAGE_SCRIPT}" ]; then
+          echo "[INFO] Running ${COVERAGE_SCRIPT} for virida-eve"
+          npm run -s "${COVERAGE_SCRIPT}"
+        elif [ "${HAS_TEST_SCRIPT}" = "yes" ]; then
+          echo "[INFO] Running npm test for virida-eve"
+          npm test -- --ci --runInBand --coverage
         else
-          echo "::warning::Frontend tests/coverage failed — scan will proceed without coverage report"
+          echo "::warning::No test script found in virida-eve/package.json"
         fi
 
     - name: Install SonarScanner CLI
       run: |
         set -euo pipefail
+        if [ -x "${SONAR_SCANNER_DIR}/bin/sonar-scanner" ]; then
+          echo "[OK] SonarScanner restored from cache"
+          "${SONAR_SCANNER_DIR}/bin/sonar-scanner" --version
+          exit 0
+        fi
         URL="https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-${SONAR_SCANNER_VERSION}-linux-x64.zip"
         curl -fsSLo /tmp/sonar-scanner.zip "${URL}"
         curl -fsSLo /tmp/sonar-scanner.zip.sha256 "${URL}.sha256"
@@ -174,6 +306,105 @@ jobs:
           -Dsonar.scm.disabled=true \
           -Dsonar.sourceEncoding=UTF-8 \
           -Dsonar.scanner.skipJreProvisioning=true
+
+    - name: Sonar scan Virida_marketplace_api
+      working-directory: Virida_marketplace_api
+      timeout-minutes: 20
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        SONAR_SCANNER_OPTS: '-Xmx768m -Xms256m'
+        SONAR_SCANNER_JAVA_OPTS: '-Xmx768m -Xms256m'
+      run: |
+        set -euo pipefail
+        SONAR_TOKEN_CLEAN="$(printf '%s' "${SONAR_TOKEN}" | tr -d '\r\n')"
+        SONAR_HOST_URL_CLEAN="$(printf '%s' "${SONAR_HOST_URL}" | tr -d '\r\n' | sed -E 's#(https?://[^/]+).*#\1#')"
+        if [ -z "${SONAR_TOKEN_CLEAN}" ]; then
+          echo "::error::SONAR_TOKEN empty after trim"
+          exit 1
+        fi
+        SCAN_ARGS=(
+          -Dsonar.host.url="${SONAR_HOST_URL_CLEAN}"
+          -Dsonar.token="${SONAR_TOKEN_CLEAN}"
+          -Dsonar.projectKey=Virida_marketplace_api
+          -Dsonar.projectName=Virida_marketplace_api
+          -Dsonar.sources=.
+          -Dsonar.exclusions='node_modules/**,dist/**,build/**,coverage/**,**/*.min.js,**/*.bundle.js,**/*.generated.*'
+          -Dsonar.javascript.node.maxspace=1024
+          -Dsonar.scm.disabled=true
+          -Dsonar.sourceEncoding=UTF-8
+          -Dsonar.scanner.skipJreProvisioning=true
+        )
+        if [ -f coverage/lcov.info ]; then
+          SCAN_ARGS+=(-Dsonar.javascript.lcov.reportPaths=coverage/lcov.info)
+        fi
+        "${SONAR_SCANNER_DIR}/bin/sonar-scanner" "${SCAN_ARGS[@]}"
+
+    - name: Sonar scan Virida_marketplace_app
+      working-directory: Virida_marketplace_app
+      timeout-minutes: 20
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        SONAR_SCANNER_OPTS: '-Xmx768m -Xms256m'
+        SONAR_SCANNER_JAVA_OPTS: '-Xmx768m -Xms256m'
+      run: |
+        set -euo pipefail
+        SONAR_TOKEN_CLEAN="$(printf '%s' "${SONAR_TOKEN}" | tr -d '\r\n')"
+        SONAR_HOST_URL_CLEAN="$(printf '%s' "${SONAR_HOST_URL}" | tr -d '\r\n' | sed -E 's#(https?://[^/]+).*#\1#')"
+        if [ -z "${SONAR_TOKEN_CLEAN}" ]; then
+          echo "::error::SONAR_TOKEN empty after trim"
+          exit 1
+        fi
+        SCAN_ARGS=(
+          -Dsonar.host.url="${SONAR_HOST_URL_CLEAN}"
+          -Dsonar.token="${SONAR_TOKEN_CLEAN}"
+          -Dsonar.projectKey=Virida_marketplace_app
+          -Dsonar.projectName=Virida_marketplace_app
+          -Dsonar.sources=.
+          -Dsonar.exclusions='node_modules/**,dist/**,build/**,coverage/**,**/*.min.js,**/*.bundle.js,**/*.generated.*'
+          -Dsonar.javascript.node.maxspace=1024
+          -Dsonar.scm.disabled=true
+          -Dsonar.sourceEncoding=UTF-8
+          -Dsonar.scanner.skipJreProvisioning=true
+        )
+        if [ -f coverage/lcov.info ]; then
+          SCAN_ARGS+=(-Dsonar.javascript.lcov.reportPaths=coverage/lcov.info)
+        fi
+        "${SONAR_SCANNER_DIR}/bin/sonar-scanner" "${SCAN_ARGS[@]}"
+
+    - name: Sonar scan virida-eve
+      working-directory: virida-eve
+      timeout-minutes: 20
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        SONAR_SCANNER_OPTS: '-Xmx768m -Xms256m'
+        SONAR_SCANNER_JAVA_OPTS: '-Xmx768m -Xms256m'
+      run: |
+        set -euo pipefail
+        SONAR_TOKEN_CLEAN="$(printf '%s' "${SONAR_TOKEN}" | tr -d '\r\n')"
+        SONAR_HOST_URL_CLEAN="$(printf '%s' "${SONAR_HOST_URL}" | tr -d '\r\n' | sed -E 's#(https?://[^/]+).*#\1#')"
+        if [ -z "${SONAR_TOKEN_CLEAN}" ]; then
+          echo "::error::SONAR_TOKEN empty after trim"
+          exit 1
+        fi
+        SCAN_ARGS=(
+          -Dsonar.host.url="${SONAR_HOST_URL_CLEAN}"
+          -Dsonar.token="${SONAR_TOKEN_CLEAN}"
+          -Dsonar.projectKey=virida-eve
+          -Dsonar.projectName=virida-eve
+          -Dsonar.sources=.
+          -Dsonar.exclusions='node_modules/**,dist/**,build/**,coverage/**,**/*.min.js,**/*.bundle.js,**/*.generated.*,**/*.png,**/*.jpg,**/*.jpeg,**/*.gif,**/*.webp'
+          -Dsonar.javascript.node.maxspace=1024
+          -Dsonar.scm.disabled=true
+          -Dsonar.sourceEncoding=UTF-8
+          -Dsonar.scanner.skipJreProvisioning=true
+        )
+        if [ -f coverage/lcov.info ]; then
+          SCAN_ARGS+=(-Dsonar.javascript.lcov.reportPaths=coverage/lcov.info)
+        fi
+        "${SONAR_SCANNER_DIR}/bin/sonar-scanner" "${SCAN_ARGS[@]}"
 
     - name: Summary
       if: always()
