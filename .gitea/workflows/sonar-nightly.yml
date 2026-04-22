@@ -97,7 +97,6 @@ jobs:
       with:
         repository: Virida-ghouse/Virida_marketplace_api
         github-server-url: https://github.com
-        ref: ${{ env.VIRIDA_MARKETPLACE_API_REF }}
         path: Virida_marketplace_api
         token: ${{ secrets.GH_TOKEN_MARKETPLACE }}
 
@@ -106,7 +105,6 @@ jobs:
       with:
         repository: Virida-ghouse/Virida_marketplace_app
         github-server-url: https://github.com
-        ref: ${{ env.VIRIDA_MARKETPLACE_APP_REF }}
         path: Virida_marketplace_app
         token: ${{ secrets.GH_TOKEN_MARKETPLACE }}
 
