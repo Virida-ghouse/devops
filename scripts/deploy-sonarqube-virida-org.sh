@@ -102,8 +102,9 @@ echo "  1. Allez sur: https://app-5d976fde-cfd7-4662-9fff-49ed6f693eee.cleverapp
 echo "  2. Ajoutez les secrets suivants :"
 echo "     • SONAR_TOKEN = [token généré dans SonarQube]"
 echo "     • SONAR_HOST_URL = [URL de votre instance SonarQube]"
-echo "     • CLEVER_TOKEN = f2599e88c5b645faa5f4236312e1d2e3"
-echo "     • CLEVER_SECRET = nMzF1byMpZxMVUWmySYQS_8Emb6bCEeN"
+echo "     • CLEVER_TOKEN = [token Clever Cloud]"
+echo "     • CLEVER_SECRET = [secret Clever Cloud]"
+echo "  3. Si des valeurs sensibles ont déjà été exposées, faites une rotation immédiate."
 echo ""
 
 log_info "🧪 Test du pipeline CI/CD :"

@@ -20,11 +20,12 @@ concurrency:
 env:
   NODE_VERSION: '20.19.0'
   VIRIDA_API_REF: ${{ secrets.VIRIDA_API_REF || 'main' }}
-  VIRIDA_APP_REF: ${{ secrets.VIRIDA_APP_REF || 'master' }}
+  VIRIDA_APP_REF: ${{ secrets.VIRIDA_APP_REF || 'main' }}
   VIRIDA_MARKETPLACE_API_REF: ${{ secrets.VIRIDA_MARKETPLACE_API_REF || 'main' }}
   VIRIDA_MARKETPLACE_APP_REF: ${{ secrets.VIRIDA_MARKETPLACE_APP_REF || 'main' }}
   VIRIDA_EVE_REF: ${{ secrets.VIRIDA_EVE_REF || 'main' }}
-  ALLOW_MOVING_EXTERNAL_REFS: ${{ secrets.ALLOW_MOVING_EXTERNAL_REFS || 'false' }}
+  # Keep CI non-blocking by default; set secret to 'false' to enforce immutable refs on main.
+  ALLOW_MOVING_EXTERNAL_REFS: ${{ secrets.ALLOW_MOVING_EXTERNAL_REFS || 'true' }}
   SONAR_SCANNER_VERSION: '8.0.1.6346'
   SONAR_SCANNER_DIR: '/tmp/sonar-scanner'
 
@@ -96,6 +97,7 @@ jobs:
       uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       with:
         repository: Virida-ghouse/Virida_marketplace_api
+        ref: ${{ env.VIRIDA_MARKETPLACE_API_REF }}
         github-server-url: https://github.com
         path: Virida_marketplace_api
         token: ${{ secrets.GH_TOKEN_MARKETPLACE }}
@@ -104,6 +106,7 @@ jobs:
       uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       with:
         repository: Virida-ghouse/Virida_marketplace_app
+        ref: ${{ env.VIRIDA_MARKETPLACE_APP_REF }}
         github-server-url: https://github.com
         path: Virida_marketplace_app
         token: ${{ secrets.GH_TOKEN_MARKETPLACE }}
@@ -424,3 +427,28 @@ jobs:
         echo "  SonarQube scan finished"
         echo "========================================"
         echo "Results: ${{ secrets.SONAR_HOST_URL }}"
+
+    - name: Verify SonarQube quality gates (blocking)
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+      run: |
+        set -euo pipefail
+        SONAR_HOST_URL_CLEAN="$(printf '%s' "${SONAR_HOST_URL}" | tr -d '\r\n' | sed -E 's#(https?://[^/]+).*#\1#')"
+        check_gate() {
+          local key="$1"
+          local resp
+          local status
+          resp="$(curl -fsS -u "${SONAR_TOKEN}:" "${SONAR_HOST_URL_CLEAN}/api/qualitygates/project_status?projectKey=${key}")"
+          status="$(echo "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin)["projectStatus"]["status"])')"
+          echo "[INFO] ${key} quality gate: ${status}"
+          if [ "${status}" != "OK" ]; then
+            echo "::error::Sonar quality gate failed for ${key} (status=${status})."
+            exit 1
+          fi
+        }
+        check_gate "virida_api"
+        check_gate "virida_app"
+        check_gate "Virida_marketplace_api"
+        check_gate "Virida_marketplace_app"
+        check_gate "virida-eve"

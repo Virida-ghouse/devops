@@ -2,13 +2,13 @@ name: VIRIDA CI - Main Pipeline
 
 on:
   push:
-    branches: [ master, main ]
+    branches: [ main ]
   pull_request:
-    branches: [ master, main ]
+    branches: [ main ]
   # Mirror mode on Gitea does not emit push events for synced commits.
   # This schedule keeps CI automatic even when repo is a pull-mirror.
   schedule:
-    - cron: '*/30 * * * *'
+    - cron: '0 */6 * * *'
   workflow_dispatch:
 concurrency:
   group: ci-main-${{ github.ref }}
@@ -16,13 +16,17 @@ concurrency:
 
 env:
   NODE_VERSION: '20.19.0'
+  GITLEAKS_VERSION: '8.24.3'
+  VIRIDA_API_REF: ${{ secrets.VIRIDA_API_REF || 'main' }}
+  VIRIDA_APP_REF: ${{ secrets.VIRIDA_APP_REF || 'main' }}
+  VIRIDA_TOUCH_IHM_REF: ${{ secrets.VIRIDA_TOUCH_IHM_REF || 'main' }}
+  VIRIDA_EVE_REF: ${{ secrets.VIRIDA_EVE_REF || 'main' }}
+  LEAFNODE_REF: ${{ secrets.LEAFNODE_REF || 'main' }}
+  # Keep CI non-blocking by default; set secret to 'false' to enforce immutable refs on main.
+  ALLOW_MOVING_EXTERNAL_REFS: ${{ secrets.ALLOW_MOVING_EXTERNAL_REFS || 'true' }}
   # SonarScanner CLI (no Docker) settings
   SONAR_SCANNER_VERSION: "8.0.1.6346"
   SONAR_SCANNER_DIR: "/tmp/sonar-scanner"
-  # Avoid npm lockfile drift causing flaky CI:
-  # if npm ci fails because package-lock is out of sync, we fall back to npm install
-  # and still run the job (lint/tests/build). Keep this true until lockfiles are fixed.
-  NPM_CI_FALLBACK_INSTALL: "true"
 
 jobs:
   # ========================================
@@ -38,51 +42,101 @@ jobs:
         echo "🚀 CI lancée sur branche: ${{ github.ref_name }}"
         echo "📝 Commit: ${{ github.sha }}"
         echo "👤 Auteur: ${{ github.actor }}"
+
+    - name: Runner preflight (blocking)
+      run: |
+        set -euo pipefail
+        command -v node >/dev/null 2>&1 || { echo "::error::node missing"; exit 1; }
+        command -v npm >/dev/null 2>&1 || { echo "::error::npm missing"; exit 1; }
+        command -v python3 >/dev/null 2>&1 || { echo "::error::python3 missing"; exit 1; }
+        NODE_MAJ="$(node -v | sed -E 's/^v([0-9]+).*/\1/')"
+        if [ "${NODE_MAJ}" -lt 20 ]; then
+          echo "::error::Node >= 20 required on runner."
+          exit 1
+        fi
+        echo "[OK] Runner preflight passed"
+
+    - name: Enforce immutable external refs on main
+      run: |
+        set -euo pipefail
+        if [ "${GITHUB_REF_NAME:-}" != "main" ]; then
+          echo "[INFO] Not main branch; immutable ref policy is advisory only."
+          exit 0
+        fi
+        if [ "${ALLOW_MOVING_EXTERNAL_REFS}" = "true" ]; then
+          echo "[INFO] ALLOW_MOVING_EXTERNAL_REFS=true, skipping immutable ref enforcement."
+          exit 0
+        fi
+        for ref in "${VIRIDA_API_REF}" "${VIRIDA_APP_REF}" "${VIRIDA_TOUCH_IHM_REF}" "${VIRIDA_EVE_REF}" "${LEAFNODE_REF}"; do
+          if printf '%s' "$ref" | grep -Eq '^(main|master|develop|dev)$'; then
+            echo "::error::External refs must be immutable on main (tag or commit SHA), got branch ref: $ref"
+            exit 1
+          fi
+        done
+        echo "[OK] External refs are immutable on main."
     
-    - name: Checkout code
-      uses: actions/checkout@v4
+    - &checkout_code_step
+      name: Checkout code
+      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       with:
         token: ${{ secrets.GITEA }}
         submodules: false
 
-    - name: Checkout virida_api
-      uses: actions/checkout@v4
+    - &checkout_virida_api_step
+      name: Checkout virida_api
+      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       with:
         repository: Virida/virida_api
-        ref: main
+        ref: ${{ env.VIRIDA_API_REF }}
         path: virida_api
         token: ${{ secrets.GITEA }}
 
-    - name: Checkout virida_app
-      uses: actions/checkout@v4
+    - &checkout_virida_app_step
+      name: Checkout virida_app
+      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       with:
         repository: Virida/virida_app
-        ref: master
+        ref: ${{ env.VIRIDA_APP_REF }}
         path: virida_app
         token: ${{ secrets.GITEA }}
       
-    - name: Validate YAML files
+    - name: Validate YAML files (strict parser)
       run: |
+        set -euo pipefail
         echo "Validating YAML configuration files..."
-        ERROR_COUNT=0
-        # Valider seulement les workflows (pas actions.yml qui a un format différent)
-        for file in .gitea/workflows/*.yml; do
-          if [ -f "$file" ]; then
-            echo "Validating $file"
-            # Vérifier que le fichier contient "name:" quelque part dans les premières lignes
-            if head -5 "$file" | grep -q "name:"; then
-              echo "  [OK] $file is valid"
-            else
-              echo "  [ERROR] Invalid workflow: $file (missing 'name:' field)"
-              ERROR_COUNT=$((ERROR_COUNT + 1))
-            fi
-          fi
-        done
-        if [ $ERROR_COUNT -gt 0 ]; then
-          echo "[ERROR] Found $ERROR_COUNT invalid workflow file(s)"
-          exit 1
-        fi
-        echo "[OK] All workflow YAML files are valid"
+        python3 - <<'PY'
+        import glob
+        import sys
+        try:
+            import yaml
+        except ModuleNotFoundError:
+            print("::error::PyYAML is missing on runner. Pre-bake python3-yaml/PyYAML in the runner image.")
+            sys.exit(1)
+
+        files = sorted(glob.glob(".gitea/workflows/*.yml"))
+        if not files:
+            print("[INFO] No workflow files to validate.")
+            sys.exit(0)
+
+        errors = 0
+        for path in files:
+            print(f"Validating {path}")
+            try:
+                with open(path, "r", encoding="utf-8") as fh:
+                    data = yaml.safe_load(fh)
+                if not isinstance(data, dict) or "name" not in data:
+                    print(f"[ERROR] Invalid workflow: {path} (missing top-level 'name')")
+                    errors += 1
+                    continue
+                print(f"[OK] {path} is valid")
+            except Exception as exc:  # strict parsing errors
+                print(f"[ERROR] YAML parse error in {path}: {exc}")
+                errors += 1
+        if errors:
+            print(f"[ERROR] Found {errors} invalid workflow file(s)")
+            sys.exit(1)
+        print("[OK] All workflow YAML files are valid")
+        PY
         
     - name: Validate JSON files
       run: |
@@ -101,13 +155,15 @@ jobs:
     name: Test EVE (virida_eve)
     needs: [validate]
     if: ${{ secrets.GITEA != '' }}
+    env:
+      STRICT_EXTERNAL_CHECKS: ${{ secrets.STRICT_EXTERNAL_CHECKS || 'true' }}
 
     steps:
     - name: Checkout virida_eve
-      uses: actions/checkout@v4
+      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       with:
         repository: Virida/virida-eve
-        ref: main
+        ref: ${{ env.VIRIDA_EVE_REF }}
         path: virida_eve
         token: ${{ secrets.GITEA }}
 
@@ -118,6 +174,10 @@ jobs:
         if command -v python3 >/dev/null 2>&1; then
           python3 -m compileall .
         else
+          if [ "${STRICT_EXTERNAL_CHECKS}" = "true" ]; then
+            echo "::error::python3 not available on runner; strict external checks enabled."
+            exit 1
+          fi
           echo "::warning::python3 not available on runner; skipping virida_eve checks."
         fi
 
@@ -126,6 +186,10 @@ jobs:
       run: |
         set -euo pipefail
         if ! command -v docker >/dev/null 2>&1; then
+          if [ "${STRICT_EXTERNAL_CHECKS}" = "true" ]; then
+            echo "::error::docker/podman not available on runner; strict external checks enabled."
+            exit 1
+          fi
           echo "::warning::docker/podman not available on runner; skipping container checks for virida-eve."
           exit 0
         fi
@@ -300,15 +364,30 @@ jobs:
     name: Test Leafnode (leafnode)
     needs: [validate]
     if: ${{ secrets.GITEA != '' }}
+    env:
+      STRICT_EXTERNAL_CHECKS: ${{ secrets.STRICT_EXTERNAL_CHECKS || 'true' }}
 
     steps:
     - name: Checkout leafnode
-      uses: actions/checkout@v4
+      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       with:
         repository: Virida/leafnode
-        ref: main
+        ref: ${{ env.LEAFNODE_REF }}
         path: leafnode
         token: ${{ secrets.GITEA }}
+
+    - name: Cache Rust and ESP toolchains
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      with:
+        path: |
+          ~/.cargo/bin
+          ~/.cargo/registry
+          ~/.cargo/git
+          ~/.rustup
+          ~/.espressif
+        key: leafnode-toolchain-${{ runner.os }}-${{ hashFiles('leafnode/**/Cargo.lock', 'leafnode/**/rust-toolchain.toml') }}
+        restore-keys: |
+          leafnode-toolchain-${{ runner.os }}-
 
     - name: Rust checks (cargo check + clippy)
       working-directory: leafnode
@@ -323,6 +402,10 @@ jobs:
           if [ -f "$d/Cargo.toml" ]; then CARGO_DIR="$d"; break; fi
         done
         if [ -z "$CARGO_DIR" ]; then
+          if [ "${STRICT_EXTERNAL_CHECKS}" = "true" ]; then
+            echo "::error::No Cargo.toml found; strict external checks enabled."
+            exit 1
+          fi
           echo "::warning::No Cargo.toml found; skipping leafnode checks."
           exit 0
         fi
@@ -348,6 +431,10 @@ jobs:
         fi
 
         if [ "$NEEDS_ESP" = "true" ] && [ "${LEAFNODE_FULL_BUILD:-}" != "true" ]; then
+          if [ "${STRICT_EXTERNAL_CHECKS}" = "true" ]; then
+            echo "::error::leafnode requires ESP toolchain and LEAFNODE_FULL_BUILD is not enabled."
+            exit 1
+          fi
           echo "::warning::leafnode targets ESP32 (toolchain=esp, esp-idf-svc). Full cargo check/clippy requires espup + ESP-IDF framework (~2GB, ~15min setup)."
           echo "::warning::Skipping compile checks. Set secret LEAFNODE_FULL_BUILD=true to enable them on this runner."
           echo "[INFO] Manifest + TOML syntax validation passed — project structure looks OK."
@@ -355,6 +442,10 @@ jobs:
         fi
 
         if ! command -v cargo >/dev/null 2>&1; then
+          if [ "${STRICT_EXTERNAL_CHECKS}" = "true" ]; then
+            echo "::error::cargo not available on runner; strict external checks enabled."
+            exit 1
+          fi
           echo "::warning::cargo not available on runner; skipping leafnode compile checks."
           exit 0
         fi
@@ -374,6 +465,10 @@ jobs:
         if rustup component list --installed 2>/dev/null | grep -q clippy; then
           cargo clippy -- -D warnings
         else
+          if [ "${STRICT_EXTERNAL_CHECKS}" = "true" ]; then
+            echo "::error::clippy not installed; strict external checks enabled."
+            exit 1
+          fi
           echo "::warning::clippy not installed; skipping static analysis."
         fi
 
@@ -385,42 +480,57 @@ jobs:
     name: Test Touch IHM (virida_touch_ihm)
     needs: [validate]
     if: ${{ secrets.GITEA != '' }}
+    env:
+      STRICT_EXTERNAL_CHECKS: ${{ secrets.STRICT_EXTERNAL_CHECKS || 'true' }}
 
     steps:
-    # Note: Virida/virida_touch_ihm has 'main' as default but 'main' only
-    # contains README.md. The real app (React/Vite/TS) lives on 'master'.
+    # virida_touch_ihm is expected to use main as operational branch.
     - name: Checkout virida_touch_ihm
-      uses: actions/checkout@v4
+      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       with:
         repository: Virida/virida_touch_ihm
-        ref: master
+        ref: ${{ env.VIRIDA_TOUCH_IHM_REF }}
         path: virida_touch_ihm
         token: ${{ secrets.GITEA }}
 
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
+    - &setup_node_step
+      name: Setup Node.js
+      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
       with:
         node-version: ${{ env.NODE_VERSION }}
+        cache: npm
+        cache-dependency-path: |
+          virida_api/package-lock.json
+          virida_app/package-lock.json
+          virida_touch_ihm/package-lock.json
 
     - name: Install + lint/build (if present)
       working-directory: virida_touch_ihm
       run: |
         set -euo pipefail
         if [ ! -f "package.json" ]; then
+          if [ "${STRICT_EXTERNAL_CHECKS}" = "true" ]; then
+            echo "::error::No package.json found for virida_touch_ihm; strict external checks enabled."
+            exit 1
+          fi
           echo "::warning::No package.json found; skipping virida_touch_ihm."
           exit 0
         fi
         if npm ci --ignore-scripts; then
           echo "[OK] npm ci"
         else
-          if [ "${NPM_CI_FALLBACK_INSTALL}" = "true" ]; then
-            echo "[WARN] npm ci failed (lockfile mismatch). Falling back to npm install."
-            npm install --ignore-scripts
-          else
+          echo "::error::npm ci failed (lockfile mismatch or registry issue)."
+          exit 1
+        fi
+        if npm run -s lint; then
+          echo "[OK] lint"
+        else
+          if [ "${STRICT_EXTERNAL_CHECKS}" = "true" ]; then
+            echo "::error::Lint failed for virida_touch_ihm; strict external checks enabled."
             exit 1
           fi
+          echo "::warning::No lint script (or lint failed)"
         fi
-        npm run -s lint || echo "::warning::No lint script (or lint failed)"
 
         # Advisory build only: do not fail CI if this external repo build is
         # killed by runner limits (OOM/SIGTERM) or exceeds a soft timeout.
@@ -434,10 +544,22 @@ jobs:
         if [ "$BUILD_RC" -eq 0 ]; then
           echo "[OK] virida_touch_ihm build"
         elif [ "$BUILD_RC" -eq 124 ]; then
+          if [ "${STRICT_EXTERNAL_CHECKS}" = "true" ]; then
+            echo "::error::virida_touch_ihm build timed out; strict external checks enabled."
+            exit 1
+          fi
           echo "::warning::virida_touch_ihm build timed out (advisory step)"
         elif [ "$BUILD_RC" -eq 137 ] || [ "$BUILD_RC" -eq 143 ]; then
+          if [ "${STRICT_EXTERNAL_CHECKS}" = "true" ]; then
+            echo "::error::virida_touch_ihm build terminated (OOM/limits); strict external checks enabled."
+            exit 1
+          fi
           echo "::warning::virida_touch_ihm build terminated (likely OOM/runner limits, advisory step)"
         else
+          if [ "${STRICT_EXTERNAL_CHECKS}" = "true" ]; then
+            echo "::error::virida_touch_ihm build failed with exit code $BUILD_RC; strict external checks enabled."
+            exit 1
+          fi
           echo "::warning::virida_touch_ihm build failed with exit code $BUILD_RC (advisory step)"
         fi
 
@@ -449,32 +571,11 @@ jobs:
     name: Test Frontend (virida_app)
     
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        token: ${{ secrets.GITEA }}
-        submodules: false
-
-    - name: Checkout virida_api
-      uses: actions/checkout@v4
-      with:
-        repository: Virida/virida_api
-        ref: main
-        path: virida_api
-        token: ${{ secrets.GITEA }}
-
-    - name: Checkout virida_app
-      uses: actions/checkout@v4
-      with:
-        repository: Virida/virida_app
-        ref: master
-        path: virida_app
-        token: ${{ secrets.GITEA }}
+    - *checkout_code_step
+    - *checkout_virida_api_step
+    - *checkout_virida_app_step
       
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ env.NODE_VERSION }}
+    - *setup_node_step
 
     - name: Check virida_app exists
       id: check_frontend
@@ -486,31 +587,26 @@ jobs:
           echo "[INFO] virida_app not present in this repo checkout; skipping frontend job."
         fi
         
-    - name: Install dependencies
-      if: steps.check_frontend.outputs.exists == 'true'
+    - &frontend_npm_ci_step
+      name: Install frontend dependencies
       working-directory: virida_app
       run: |
-        set -e
-        if npm ci --ignore-scripts; then
-          echo "[OK] npm ci"
-        else
-          if [ "${NPM_CI_FALLBACK_INSTALL}" = "true" ]; then
-            echo "[WARN] npm ci failed (lockfile mismatch). Falling back to npm install."
-            npm install --ignore-scripts
-          else
-            exit 1
-          fi
+        set -euo pipefail
+        if [ ! -f "package.json" ]; then
+          echo "[INFO] No package.json in virida_app; skipping npm ci."
+          exit 0
         fi
+        npm ci --ignore-scripts
       
-    - name: Lint code (advisory)
+    - name: Lint code
       if: steps.check_frontend.outputs.exists == 'true'
       working-directory: virida_app
-      run: npm run -s lint || echo "::warning::Frontend lint failed — run 'npm run lint' locally to fix"
+      run: npm run -s lint
 
-    - name: Run tests (advisory)
+    - name: Run tests
       if: steps.check_frontend.outputs.exists == 'true'
       working-directory: virida_app
-      run: npm test || echo "::warning::Frontend tests failed or not configured"
+      run: npm test
 
     - name: Build
       if: steps.check_frontend.outputs.exists == 'true'
@@ -529,32 +625,11 @@ jobs:
     name: Test Backend (virida_api)
     
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        token: ${{ secrets.GITEA }}
-        submodules: false
-
-    - name: Checkout virida_api
-      uses: actions/checkout@v4
-      with:
-        repository: Virida/virida_api
-        ref: main
-        path: virida_api
-        token: ${{ secrets.GITEA }}
-
-    - name: Checkout virida_app
-      uses: actions/checkout@v4
-      with:
-        repository: Virida/virida_app
-        ref: master
-        path: virida_app
-        token: ${{ secrets.GITEA }}
+    - *checkout_code_step
+    - *checkout_virida_api_step
+    - *checkout_virida_app_step
       
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ env.NODE_VERSION }}
+    - *setup_node_step
 
     - name: Check virida_api exists
       id: check_backend
@@ -566,13 +641,33 @@ jobs:
           echo "[INFO] virida_api not present in this repo checkout; skipping backend job."
         fi
         
-    - name: Install dependencies
-      if: steps.check_backend.outputs.exists == 'true'
-      working-directory: virida_api
+    - &backend_prepare_step
+      name: Install backend dependencies + prisma generate
       run: |
+        set -euo pipefail
+        if [ ! -f "virida_api/package.json" ]; then
+          echo "[INFO] No package.json in virida_api; skipping backend prepare."
+          exit 0
+        fi
+        cd virida_api
         npm ci
         export DATABASE_URL="postgresql://user:pass@localhost:5432/virida?schema=public"
         npx prisma generate
+
+    - name: Enforce real backend quality scripts
+      if: steps.check_backend.outputs.exists == 'true'
+      working-directory: virida_api
+      run: |
+        set -euo pipefail
+        if grep -Eq '"test"[[:space:]]*:[[:space:]]*"echo[[:space:]]+\\"Tests à implémenter\\"' package.json; then
+          echo "::error::Backend test script is still a placeholder."
+          exit 1
+        fi
+        if grep -Eq '"lint"[[:space:]]*:[[:space:]]*"echo[[:space:]]+\\"Linting à implémenter\\"' package.json; then
+          echo "::error::Backend lint script is still a placeholder."
+          exit 1
+        fi
+        echo "[OK] Backend quality scripts are not placeholders."
       
     - name: Lint code
       if: steps.check_backend.outputs.exists == 'true'
@@ -600,68 +695,60 @@ jobs:
     needs: [validate]
     
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        token: ${{ secrets.GITEA }}
-        submodules: false
-
-    - name: Checkout virida_api
-      uses: actions/checkout@v4
-      with:
-        repository: Virida/virida_api
-        ref: main
-        path: virida_api
-        token: ${{ secrets.GITEA }}
-
-    - name: Checkout virida_app
-      uses: actions/checkout@v4
-      with:
-        repository: Virida/virida_app
-        ref: master
-        path: virida_app
-        token: ${{ secrets.GITEA }}
+    - *checkout_code_step
+    - *checkout_virida_api_step
+    - *checkout_virida_app_step
       
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ env.NODE_VERSION }}
+    - *setup_node_step
         
+    - *frontend_npm_ci_step
+
     - name: Scan Frontend dependencies
       if: ${{ hashFiles('virida_app/package.json') != '' }}
       working-directory: virida_app
       run: |
-        set -e
-        if npm ci --ignore-scripts; then
-          echo "[OK] npm ci"
-        else
-          if [ "${NPM_CI_FALLBACK_INSTALL}" = "true" ]; then
-            echo "[WARN] npm ci failed (lockfile mismatch). Falling back to npm install."
-            npm install --ignore-scripts
-          else
-            exit 1
-          fi
-        fi
-        echo "--- npm audit ---"
-        npm audit --audit-level=moderate || echo "::warning::Frontend has vulnerabilities — run npm audit fix locally"
+        set -euo pipefail
+        echo "--- npm audit (blocking on high/critical) ---"
+        npm audit --audit-level=high
         
+    - &backend_npm_ci_ignore_scripts_step
+      name: Install backend dependencies (audit mode)
+      if: ${{ hashFiles('virida_api/package.json') != '' }}
+      working-directory: virida_api
+      run: |
+        set -euo pipefail
+        npm ci --ignore-scripts
+
     - name: Scan Backend dependencies
       if: ${{ hashFiles('virida_api/package.json') != '' }}
       working-directory: virida_api
       run: |
-        set -e
-        if npm ci --ignore-scripts; then
-          echo "[OK] npm ci"
-        else
-          if [ "${NPM_CI_FALLBACK_INSTALL}" = "true" ]; then
-            echo "[WARN] npm ci failed. Falling back to npm install."
-            npm install --ignore-scripts
-          else
-            exit 1
-          fi
+        set -euo pipefail
+        echo "--- npm audit (blocking on high/critical) ---"
+        npm audit --audit-level=high
+
+    - name: Install gitleaks
+      run: |
+        set -euo pipefail
+        URL="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+        curl -fsSL "${URL}" -o /tmp/gitleaks.tar.gz
+        curl -fsSL "${URL}.sha256" -o /tmp/gitleaks.tar.gz.sha256
+        EXPECTED_SHA="$(awk '{print $1}' /tmp/gitleaks.tar.gz.sha256)"
+        ACTUAL_SHA="$(shasum -a 256 /tmp/gitleaks.tar.gz | awk '{print $1}')"
+        if [ -z "${EXPECTED_SHA}" ] || [ "${ACTUAL_SHA}" != "${EXPECTED_SHA}" ]; then
+          echo "::error::gitleaks archive SHA256 mismatch"
+          echo "::error::expected=${EXPECTED_SHA}"
+          echo "::error::actual=${ACTUAL_SHA}"
+          exit 1
         fi
-        echo "--- npm audit ---"
-        npm audit --audit-level=moderate || echo "::warning::Backend has vulnerabilities — run npm audit fix locally"
+        tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+        chmod +x /tmp/gitleaks
+        /tmp/gitleaks version
+
+    - name: Secret scan with gitleaks (blocking)
+      run: |
+        set -euo pipefail
+        /tmp/gitleaks detect --source . --redact --exit-code 1 --config .gitleaks.toml
 
   # ========================================
   # BUILD
@@ -672,33 +759,14 @@ jobs:
     needs: [test-frontend, test-backend]
     
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        token: ${{ secrets.GITEA }}
-        submodules: false
-
-    - name: Checkout virida_api
-      uses: actions/checkout@v4
-      with:
-        repository: Virida/virida_api
-        ref: main
-        path: virida_api
-        token: ${{ secrets.GITEA }}
-
-    - name: Checkout virida_app
-      uses: actions/checkout@v4
-      with:
-        repository: Virida/virida_app
-        ref: master
-        path: virida_app
-        token: ${{ secrets.GITEA }}
+    - *checkout_code_step
+    - *checkout_virida_api_step
+    - *checkout_virida_app_step
       
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ env.NODE_VERSION }}
+    - *setup_node_step
         
+    - *frontend_npm_ci_step
+
     - name: Build Frontend
       if: ${{ hashFiles('virida_app/package.json') != '' }}
       working-directory: virida_app
@@ -706,41 +774,50 @@ jobs:
       env:
         VITE_API_URL: ${{ secrets.VITE_API_URL || '' }}
       run: |
-        set -e
-        if npm ci --ignore-scripts --no-audit --fund=false; then
-          echo "[OK] npm ci"
-        else
-          if [ "${NPM_CI_FALLBACK_INSTALL}" = "true" ]; then
-            echo "[WARN] npm ci failed (lockfile mismatch). Falling back to npm install."
-            npm install --ignore-scripts --no-audit --fund=false
-          else
-            exit 1
-          fi
-        fi
+        set -euo pipefail
         NODE_OPTIONS="--max-old-space-size=1536 --no-warnings" npm run build
         echo "[OK] Frontend build successful"
         
+    - *backend_prepare_step
+
     - name: Build Backend
       if: ${{ hashFiles('virida_api/package.json') != '' }}
       working-directory: virida_api
       run: |
-        npm ci
-        export DATABASE_URL="postgresql://user:pass@localhost:5432/virida?schema=public"
-        npx prisma generate
         npm run build
         echo "[OK] Backend build successful"
 
   # ========================================
-  # SONARQUBE ANALYSIS — runs in parallel (non-blocking)
+  # SONARQUBE QUALITY GATE (blocking)
   # ========================================
-  # Sonar scans are too slow/heavy for the Clever Cloud runner (~1 GB RAM) to
-  # run synchronously without destabilizing the pipeline. They live in
-  # .gitea/workflows/sonar-nightly.yml, which triggers:
-  #   - Automatically on every push to master (parallel, non-blocking)
-  #   - Every Sunday 03:00 UTC (scheduled catch-all)
-  #   - On-demand via Gitea Actions > "Run workflow" (workflow_dispatch)
-  # Concurrency is enabled: a new push cancels the previous Sonar run.
-  # For a local fast scan: scripts/sonar-scan-local.sh
+  sonar-quality-gate:
+    runs-on: virida-host
+    name: Sonar Quality Gate
+    needs: [build]
+    if: ${{ secrets.SONAR_TOKEN != '' && secrets.SONAR_HOST_URL != '' && secrets.SONAR_HARD_GATE_ENABLED != 'false' }}
+
+    steps:
+    - name: Check SonarQube project gates
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+      run: |
+        set -euo pipefail
+        SONAR_HOST_URL_CLEAN="$(printf '%s' "${SONAR_HOST_URL}" | tr -d '\r\n' | sed -E 's#(https?://[^/]+).*#\1#')"
+        check_gate() {
+          local key="$1"
+          local resp
+          local status
+          resp="$(curl -fsS -u "${SONAR_TOKEN}:" "${SONAR_HOST_URL_CLEAN}/api/qualitygates/project_status?projectKey=${key}")"
+          status="$(echo "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin)["projectStatus"]["status"])')"
+          echo "[INFO] ${key} quality gate: ${status}"
+          if [ "${status}" != "OK" ]; then
+            echo "::error::Sonar quality gate failed for ${key} (status=${status})."
+            exit 1
+          fi
+        }
+        check_gate "virida_api"
+        check_gate "virida_app"
 
   # ========================================
   # SUMMARY
@@ -748,8 +825,10 @@ jobs:
   ci-summary:
     runs-on: virida-host
     name: CI Summary
-    needs: [validate, test-eve, test-leafnode, test-touch-ihm, test-frontend, test-backend, security, build]
+    needs: [validate, test-eve, test-leafnode, test-touch-ihm, test-frontend, test-backend, security, build, sonar-quality-gate]
     if: always()
+    env:
+      STRICT_EXTERNAL_CHECKS: ${{ secrets.STRICT_EXTERNAL_CHECKS || 'true' }}
     
     steps:
     - name: CI Summary
@@ -763,6 +842,10 @@ jobs:
         echo ""
 
         FAIL=0
+        EXT_REQUIRED="false"
+        if [ "${STRICT_EXTERNAL_CHECKS}" = "true" ]; then
+          EXT_REQUIRED="true"
+        fi
         report() {
           local name="$1" result="$2" required="$3"
           case "$result" in
@@ -780,16 +863,16 @@ jobs:
         report "Test Backend"   "${{ needs.test-backend.result }}"   true
         report "Build"          "${{ needs.build.result }}"          true
         echo ""
-        echo "  ℹ️  SonarQube runs automatically in parallel (sonar-nightly.yml)"
-        echo "     Check its run status in the Actions tab — it doesn't block this pipeline."
+        echo "SonarQube:"
+        report "Sonar Quality Gate" "${{ needs.sonar-quality-gate.result }}" true
         echo ""
         echo "External repos (best-effort):"
-        report "Test EVE"       "${{ needs.test-eve.result }}"       false
-        report "Test Leafnode"  "${{ needs.test-leafnode.result }}"  false
-        report "Test Touch IHM" "${{ needs.test-touch-ihm.result }}" false
+        report "Test EVE"       "${{ needs.test-eve.result }}"       "$EXT_REQUIRED"
+        report "Test Leafnode"  "${{ needs.test-leafnode.result }}"  "$EXT_REQUIRED"
+        report "Test Touch IHM" "${{ needs.test-touch-ihm.result }}" "$EXT_REQUIRED"
         echo ""
-        echo "Security (advisory):"
-        report "Security Scan"  "${{ needs.security.result }}"      false
+        echo "Security:"
+        report "Security Scan"  "${{ needs.security.result }}"      true
         echo ""
 
         if [ "$FAIL" -eq 0 ]; then
@@ -805,11 +888,58 @@ jobs:
         fi
 
   # ========================================
-  # CD (Clever Cloud) — lives in dedicated workflows:
+  # METRICS ARTIFACT
+  # ========================================
+  ci-metrics:
+    runs-on: virida-host
+    name: CI Metrics Artifact
+    needs: [validate, test-eve, test-leafnode, test-touch-ihm, test-frontend, test-backend, security, build, sonar-quality-gate, ci-summary]
+    if: always()
+    env:
+      STRICT_EXTERNAL_CHECKS: ${{ secrets.STRICT_EXTERNAL_CHECKS || 'true' }}
+
+    steps:
+    - name: Generate metrics json
+      run: |
+        set -euo pipefail
+        mkdir -p ci-metrics
+        cat > ci-metrics/summary.json <<EOF
+        {
+          "timestamp_utc": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+          "workflow": "VIRIDA CI - Main Pipeline",
+          "branch": "${{ github.ref_name }}",
+          "sha": "${{ github.sha }}",
+          "strict_external_checks": "${STRICT_EXTERNAL_CHECKS}",
+          "jobs": {
+            "validate": "${{ needs.validate.result }}",
+            "test_eve": "${{ needs.test-eve.result }}",
+            "test_leafnode": "${{ needs.test-leafnode.result }}",
+            "test_touch_ihm": "${{ needs.test-touch-ihm.result }}",
+            "test_frontend": "${{ needs.test-frontend.result }}",
+            "test_backend": "${{ needs.test-backend.result }}",
+            "security": "${{ needs.security.result }}",
+            "build": "${{ needs.build.result }}",
+            "sonar_quality_gate": "${{ needs.sonar-quality-gate.result }}",
+            "ci_summary": "${{ needs.ci-summary.result }}"
+          }
+        }
+        EOF
+        cp ci-metrics/summary.json ci-metrics/summary-$(date -u +"%Y%m%dT%H%M%SZ").json
+
+    - name: Upload CI metrics artifact
+      uses: actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5 # v3
+      with:
+        name: ci-metrics-${{ github.run_id }}
+        path: ci-metrics/
+        retention-days: 30
+
+  # ========================================
+  # CD (Clever Cloud) — dedicated workflows in this repository:
   #   .gitea/workflows/api-clever-cloud-deploy.yml   → virida_api
   #   .gitea/workflows/app-clever-cloud-deploy.yml   → virida_app
-  #   .gitea/workflows/eve-clever-cloud-deploy.yml   → virida-eve (Docker)
-  # Gitea, Gitea Runner and SonarQube apps are deployed/managed manually
-  # via `clever deploy` since their images ship from this repo's Dockerfiles.
+  #   .gitea/workflows/eve-clever-cloud-deploy.yml   → virida-eve
+  #   .gitea/workflows/touch-ihm-deploy.yml          → virida_touch_ihm
+  # Firmware release:
+  #   .gitea/workflows/leafnode-release.yml          → leafnode
   # ========================================
 

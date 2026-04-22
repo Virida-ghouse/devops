@@ -9,7 +9,7 @@ name: Deploy virida-eve to Clever Cloud
 #   3. Copy the deployment git remote URL (git+ssh://... or https://...)
 #   4. Add the following secrets in Gitea Actions:
 #        CLEVER_EVE_GIT_URL       The git remote URL from step 3
-#        CLEVER_EVE_DEPLOY_REF    Usually 'master' or 'main'
+#        CLEVER_EVE_DEPLOY_REF    Usually 'main'
 #        CD_EVE_ENABLED           Set to 'true' to actually deploy (safety switch)
 #
 # Triggered:
@@ -27,6 +27,18 @@ on:
         options:
           - 'false'
           - 'true'
+      confirm_production:
+        description: 'Explicit production approval (must be true to deploy)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+      rollback_ref:
+        description: 'Optional git ref/SHA to rollback to (deploy this ref instead of HEAD)'
+        required: false
+        default: ''
   schedule:
     - cron: '0 5 * * 1'
 
@@ -38,6 +50,7 @@ jobs:
   deploy:
     runs-on: virida-host
     name: Push virida-eve to Clever Cloud
+    environment: production
     timeout-minutes: 10
     if: ${{ secrets.GITEA != '' && secrets.CD_EVE_ENABLED == 'true' }}
 
@@ -53,13 +66,34 @@ jobs:
           exit 1
         fi
         if [ -z "${CLEVER_EVE_DEPLOY_REF:-}" ]; then
-          echo "::error::Missing secret CLEVER_EVE_DEPLOY_REF (usually 'master')."
+          echo "::error::Missing secret CLEVER_EVE_DEPLOY_REF (usually 'main')."
           exit 1
         fi
         echo "[OK] Deploy secrets present"
 
+    - name: Explicit deploy approval gate
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        CONFIRM_PRODUCTION: ${{ github.event.inputs.confirm_production || 'false' }}
+        PROD_AUTO_APPROVED: ${{ secrets.PROD_AUTO_APPROVED || 'false' }}
+      run: |
+        set -euo pipefail
+        if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
+          if [ "${CONFIRM_PRODUCTION}" != "true" ]; then
+            echo "::error::Deployment blocked: set input confirm_production=true."
+            exit 1
+          fi
+          echo "[OK] Manual production approval confirmed."
+          exit 0
+        fi
+        if [ "${PROD_AUTO_APPROVED}" != "true" ]; then
+          echo "::error::Scheduled deployment blocked: secret PROD_AUTO_APPROVED must be true."
+          exit 1
+        fi
+        echo "[OK] Scheduled deployment explicitly allowed."
+
     - name: Checkout virida-eve
-      uses: actions/checkout@v4
+      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       with:
         repository: Virida/virida-eve
         ref: main
@@ -85,24 +119,60 @@ jobs:
         CLEVER_EVE_GIT_URL: ${{ secrets.CLEVER_EVE_GIT_URL }}
         CLEVER_EVE_DEPLOY_REF: ${{ secrets.CLEVER_EVE_DEPLOY_REF }}
         DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+        ROLLBACK_REF: ${{ github.event.inputs.rollback_ref || '' }}
       run: |
         set -euo pipefail
+        case "${CLEVER_EVE_DEPLOY_REF}" in
+          main|release/*|hotfix/*) ;;
+          *)
+            echo "::error::Ref de deploiement non autorisee: ${CLEVER_EVE_DEPLOY_REF}"
+            echo "::error::Valeurs autorisees: main, release/*, hotfix/*"
+            exit 1
+            ;;
+        esac
+        PREV_REMOTE_SHA="$(git ls-remote "${CLEVER_EVE_GIT_URL}" "refs/heads/${CLEVER_EVE_DEPLOY_REF}" | awk '{print $1}')"
+        if [ -n "${PREV_REMOTE_SHA:-}" ]; then
+          echo "[INFO] Previous remote SHA on ${CLEVER_EVE_DEPLOY_REF}: ${PREV_REMOTE_SHA}"
+          echo "[INFO] Rollback command:"
+          echo "       git push clevercloud ${PREV_REMOTE_SHA}:${CLEVER_EVE_DEPLOY_REF}"
+        else
+          echo "[INFO] No previous remote SHA found on ${CLEVER_EVE_DEPLOY_REF} (first deployment?)."
+        fi
+
+        SOURCE_REF="HEAD"
+        if [ -n "${ROLLBACK_REF}" ]; then
+          if ! git rev-parse --verify --quiet "${ROLLBACK_REF}^{commit}" >/dev/null; then
+            echo "::error::rollback_ref not found or not a commit-ish: ${ROLLBACK_REF}"
+            exit 1
+          fi
+          SOURCE_REF="${ROLLBACK_REF}"
+          echo "[INFO] Rollback mode: deploying ${SOURCE_REF} to ${CLEVER_EVE_DEPLOY_REF}"
+        fi
+
         git remote remove clevercloud 2>/dev/null || true
         git remote add clevercloud "${CLEVER_EVE_GIT_URL}"
         if [ "${DRY_RUN}" = "true" ]; then
-          echo "[DRY RUN] would push HEAD to clevercloud:${CLEVER_EVE_DEPLOY_REF}"
+          echo "[DRY RUN] would push ${SOURCE_REF} to clevercloud:${CLEVER_EVE_DEPLOY_REF}"
           exit 0
         fi
         echo "[INFO] Pushing to Clever Cloud (this triggers Clever standard build/deploy)..."
-        git push --force clevercloud "HEAD:${CLEVER_EVE_DEPLOY_REF}"
+        git push clevercloud "${SOURCE_REF}:${CLEVER_EVE_DEPLOY_REF}"
         echo "[OK] Push done — check Clever Cloud Console for build progress."
 
     - name: Summary
       if: always()
+      env:
+        ROLLBACK_REF: ${{ github.event.inputs.rollback_ref || '' }}
       run: |
+        set -euo pipefail
+        SOURCE_REF="HEAD"
+        if [ -n "${ROLLBACK_REF}" ]; then
+          SOURCE_REF="${ROLLBACK_REF}"
+        fi
         echo "========================================"
         echo "  Deploy virida-eve → Clever Cloud (standard app)"
         echo "========================================"
-        echo "Branch pushed: ${{ secrets.CLEVER_EVE_DEPLOY_REF }}"
+        echo "Source pushed: ${SOURCE_REF}"
+        echo "Target ref:    ${{ secrets.CLEVER_EVE_DEPLOY_REF }}"
         echo "Dry run:       ${{ github.event.inputs.dry_run || 'false' }}"
         echo "Check build logs on: https://console.clever-cloud.com"

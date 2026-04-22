@@ -1,0 +1,8 @@
+[allowlist]
+description = "Repository-level allowlist for CI secret scanning"
+paths = [
+  '''^node_modules/''',
+  '''^dist/''',
+  '''^build/''',
+  '''^\.git/''',
+]

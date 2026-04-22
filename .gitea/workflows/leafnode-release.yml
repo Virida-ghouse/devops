@@ -54,13 +54,18 @@ jobs:
         fi
         echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
         if [ -n "$TAG" ]; then
+          if ! printf '%s' "$TAG" | grep -Eq '^leafnode-v[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9._-]+)?$'; then
+            echo "::error::Invalid tag format: $TAG"
+            echo "::error::Expected: leafnode-vX.Y.Z (optional suffix allowed)"
+            exit 1
+          fi
           echo "[INFO] Release tag: $TAG"
         else
           echo "[INFO] No tag — this is a dry-run build (no Release published)."
         fi
 
     - name: Checkout leafnode
-      uses: actions/checkout@v4
+      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       with:
         repository: Virida/leafnode
         ref: main
@@ -153,7 +158,7 @@ jobs:
         echo "[OK] Firmware: $OUT ($SIZE bytes)"
 
     - name: Upload artifact (always)
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5 # v3
       with:
         name: leafnode-firmware-${{ steps.tag.outputs.tag || github.sha }}
         path: ${{ steps.build.outputs.firmware_path }}
@@ -178,23 +183,70 @@ jobs:
 
         API="https://${GITEA_HOST}/api/v1/repos/${GITEA_OWNER}/${GITEA_REPO}"
 
-        BODY=$(cat <<EOF
-        {
-          "tag_name": "${TAG}",
-          "name": "leafnode ${TAG}",
-          "body": "Automated firmware build for ${CRATE_NAME} v${CRATE_VERSION}.\n\nBuilt from commit ${GITHUB_SHA}.\n\nFlash with:\n  espflash flash --chip esp32 leafnode-firmware.bin",
-          "draft": false,
-          "prerelease": false
+        BODY="$(python3 - <<'PY'
+import json
+import os
+
+payload = {
+  "tag_name": os.environ["TAG"],
+  "name": f'leafnode {os.environ["TAG"]}',
+  "body": (
+    f'Automated firmware build for {os.environ["CRATE_NAME"]} v{os.environ["CRATE_VERSION"]}.\n\n'
+    f'Built from commit {os.environ["GITHUB_SHA"]}.\n\n'
+    'Flash with:\n  espflash flash --chip esp32 leafnode-firmware.bin'
+  ),
+  "draft": False,
+  "prerelease": False,
+}
+print(json.dumps(payload, ensure_ascii=True))
+PY
+)"
+
+        api_post_json() {
+          local url="$1"
+          local data="$2"
+          local attempt=1
+          while [ "$attempt" -le 3 ]; do
+            if RESP_TMP=$(curl -fsS -X POST \
+              -H "Authorization: token ${GITEA_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "$data" \
+              "$url" 2>/tmp/release_api.err); then
+              printf "%s" "$RESP_TMP"
+              return 0
+            fi
+            echo "::warning::API POST failed (attempt ${attempt}/3), retrying..."
+            attempt=$((attempt + 1))
+            sleep 2
+          done
+          echo "::error::API POST failed after retries"
+          cat /tmp/release_api.err || true
+          return 1
         }
-        EOF
-        )
+
+        api_post_file() {
+          local url="$1"
+          local file="$2"
+          local attempt=1
+          while [ "$attempt" -le 3 ]; do
+            if RESP_TMP=$(curl -fsS -X POST \
+              -H "Authorization: token ${GITEA_TOKEN}" \
+              -F "attachment=@${file}" \
+              "$url" 2>/tmp/release_upload.err); then
+              printf "%s" "$RESP_TMP"
+              return 0
+            fi
+            echo "::warning::Asset upload failed (attempt ${attempt}/3), retrying..."
+            attempt=$((attempt + 1))
+            sleep 2
+          done
+          echo "::error::Asset upload failed after retries"
+          cat /tmp/release_upload.err || true
+          return 1
+        }
 
         echo "[INFO] Creating Release $TAG on $API ..."
-        RESP=$(curl -sS -X POST \
-          -H "Authorization: token ${GITEA_TOKEN}" \
-          -H "Content-Type: application/json" \
-          -d "$BODY" \
-          "${API}/releases")
+        RESP="$(api_post_json "${API}/releases" "$BODY")"
 
         RELEASE_ID=$(echo "$RESP" | python3 -c 'import json,sys; d=json.loads(sys.stdin.read()); print(d.get("id",""))' 2>/dev/null || true)
         if [ -z "$RELEASE_ID" ]; then
@@ -206,9 +258,12 @@ jobs:
 
         ASSET_NAME="$(basename "$FIRMWARE")"
         echo "[INFO] Uploading asset $ASSET_NAME ..."
-        UPLOAD_RESP=$(curl -sS -X POST \
-          -H "Authorization: token ${GITEA_TOKEN}" \
-          -F "attachment=@${FIRMWARE}" \
-          "${API}/releases/${RELEASE_ID}/assets?name=${ASSET_NAME}")
+        UPLOAD_RESP="$(api_post_file "${API}/releases/${RELEASE_ID}/assets?name=${ASSET_NAME}" "${FIRMWARE}")"
+        ASSET_ID=$(echo "$UPLOAD_RESP" | python3 -c 'import json,sys; d=json.loads(sys.stdin.read()); print(d.get("id",""))' 2>/dev/null || true)
+        if [ -z "$ASSET_ID" ]; then
+          echo "::error::Asset upload response has no id. Response:"
+          echo "$UPLOAD_RESP" | head -40
+          exit 1
+        fi
         echo "$UPLOAD_RESP" | head -20
         echo "[OK] Release published: https://${GITEA_HOST}/${GITEA_OWNER}/${GITEA_REPO}/releases/tag/${TAG}"

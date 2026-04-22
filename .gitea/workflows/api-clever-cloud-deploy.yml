@@ -1,26 +1,16 @@
 name: Deploy virida_api to Clever Cloud
 
-# Deploys the virida_api repository to its existing Clever Cloud app
-# (app_ff40e2dd-3bab-4a9b-82c4-8aa517a9a3f6, alias "viridaapi").
-#
-# One-time setup: add these secrets in Gitea Actions settings of this repo:
-#   CLEVER_API_GIT_URL     Usually:
-#                            git+ssh://git@push-n3-par-clevercloud-customers.services.clever-cloud.com/app_ff40e2dd-3bab-4a9b-82c4-8aa517a9a3f6.git
-#                          (or the https:// equivalent if you use token auth)
-#   CLEVER_API_DEPLOY_REF  Usually 'master'
-#   CD_API_ENABLED         Set to 'true' to actually deploy (safety switch)
-#
-# Triggered:
-#   - Manually via Gitea Actions UI (workflow_dispatch)
-#   - Weekly schedule (Monday 06:00 UTC) as drift correction
-#
-# Note: for true "push-to-master triggers CC deploy", the ideal is to set
-# up this workflow directly in the virida_api repo. This devops-level
-# workflow is a convenience wrapper (manual + scheduled).
+# Deploy virida_api to a standard Clever Cloud app through git push.
+# Auto trigger:
+#   - push on main (for continuous delivery)
+# Manual/safety:
+#   - workflow_dispatch with dry_run, confirm_production and rollback_ref
+# Drift correction:
+#   - weekly schedule
 
 on:
   push:
-    branches: [ master, main ]
+    branches: [ main ]
   workflow_dispatch:
     inputs:
       dry_run:
@@ -28,22 +18,34 @@ on:
         required: false
         default: 'false'
         type: choice
-        options:
-          - 'false'
-          - 'true'
+        options: ['false', 'true']
+      confirm_production:
+        description: 'Explicit production approval (must be true to deploy manually)'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
+      rollback_ref:
+        description: 'Optional git ref/SHA to rollback to (deploy this ref instead of HEAD)'
+        required: false
+        default: ''
   schedule:
-    - cron: '0 6 * * 1'
+    - cron: '0 1 * * 1'
 
 concurrency:
   group: api-clevercloud-deploy
   cancel-in-progress: false
 
+env:
+  VIRIDA_API_REF: ${{ secrets.VIRIDA_API_REF || 'main' }}
+
 jobs:
   deploy:
     runs-on: virida-host
     name: Push virida_api to Clever Cloud
-    timeout-minutes: 10
-    if: ${{ secrets.GITEA != '' }}
+    environment: production
+    timeout-minutes: 12
+    if: ${{ secrets.GITEA != '' && secrets.CD_API_ENABLED == 'true' }}
 
     steps:
     - name: Validate deploy secrets
@@ -53,32 +55,48 @@ jobs:
       run: |
         set -euo pipefail
         if [ -z "${CLEVER_API_GIT_URL:-}" ]; then
-          echo "::error::Missing secret CLEVER_API_GIT_URL (Clever Cloud git remote for the virida_api app)."
+          echo "::error::Missing secret CLEVER_API_GIT_URL (Clever Cloud git remote for virida_api)."
           exit 1
         fi
         if [ -z "${CLEVER_API_DEPLOY_REF:-}" ]; then
-          echo "::error::Missing secret CLEVER_API_DEPLOY_REF (usually 'master')."
+          echo "::error::Missing secret CLEVER_API_DEPLOY_REF (usually 'main')."
           exit 1
         fi
         echo "[OK] Deploy secrets present"
 
+    - name: Explicit deploy approval gate for manual/scheduled runs
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        CONFIRM_PRODUCTION: ${{ github.event.inputs.confirm_production || 'false' }}
+        PROD_AUTO_APPROVED: ${{ secrets.PROD_AUTO_APPROVED || 'false' }}
+      run: |
+        set -euo pipefail
+        if [ "${EVENT_NAME}" = "push" ]; then
+          echo "[OK] Push on main: auto-deploy enabled."
+          exit 0
+        fi
+        if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
+          if [ "${CONFIRM_PRODUCTION}" != "true" ]; then
+            echo "::error::Deployment blocked: set input confirm_production=true."
+            exit 1
+          fi
+          echo "[OK] Manual production approval confirmed."
+          exit 0
+        fi
+        if [ "${PROD_AUTO_APPROVED}" != "true" ]; then
+          echo "::error::Scheduled deployment blocked: secret PROD_AUTO_APPROVED must be true."
+          exit 1
+        fi
+        echo "[OK] Scheduled deployment explicitly allowed."
+
     - name: Checkout virida_api
-      uses: actions/checkout@v4
+      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       with:
         repository: Virida/virida_api
+        ref: ${{ env.VIRIDA_API_REF }}
         path: virida_api
         fetch-depth: 0
         token: ${{ secrets.GITEA }}
-
-    - name: Sanity check repo
-      working-directory: virida_api
-      run: |
-        set -euo pipefail
-        if [ ! -f "package.json" ]; then
-          echo "::error::package.json missing — Clever Cloud Node.js deploy would fail."
-          exit 1
-        fi
-        echo "[OK] package.json found; HEAD = $(git rev-parse --short HEAD)"
 
     - name: Push to Clever Cloud
       working-directory: virida_api
@@ -86,24 +104,40 @@ jobs:
         CLEVER_API_GIT_URL: ${{ secrets.CLEVER_API_GIT_URL }}
         CLEVER_API_DEPLOY_REF: ${{ secrets.CLEVER_API_DEPLOY_REF }}
         DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+        ROLLBACK_REF: ${{ github.event.inputs.rollback_ref || '' }}
       run: |
         set -euo pipefail
+        case "${CLEVER_API_DEPLOY_REF}" in
+          main|release/*|hotfix/*) ;;
+          *)
+            echo "::error::Ref de deploiement non autorisee: ${CLEVER_API_DEPLOY_REF}"
+            echo "::error::Valeurs autorisees: main, release/*, hotfix/*"
+            exit 1
+            ;;
+        esac
+
+        PREV_REMOTE_SHA="$(git ls-remote "${CLEVER_API_GIT_URL}" "refs/heads/${CLEVER_API_DEPLOY_REF}" | awk '{print $1}')"
+        if [ -n "${PREV_REMOTE_SHA:-}" ]; then
+          echo "[INFO] Previous remote SHA on ${CLEVER_API_DEPLOY_REF}: ${PREV_REMOTE_SHA}"
+          echo "[INFO] Rollback command:"
+          echo "       git push clevercloud ${PREV_REMOTE_SHA}:${CLEVER_API_DEPLOY_REF}"
+        fi
+
+        SOURCE_REF="HEAD"
+        if [ -n "${ROLLBACK_REF}" ]; then
+          if ! git rev-parse --verify --quiet "${ROLLBACK_REF}^{commit}" >/dev/null; then
+            echo "::error::rollback_ref not found or not a commit-ish: ${ROLLBACK_REF}"
+            exit 1
+          fi
+          SOURCE_REF="${ROLLBACK_REF}"
+          echo "[INFO] Rollback mode: deploying ${SOURCE_REF} to ${CLEVER_API_DEPLOY_REF}"
+        fi
+
         git remote remove clevercloud 2>/dev/null || true
         git remote add clevercloud "${CLEVER_API_GIT_URL}"
         if [ "${DRY_RUN}" = "true" ]; then
-          echo "[DRY RUN] would push HEAD to clevercloud:${CLEVER_API_DEPLOY_REF}"
+          echo "[DRY RUN] would push ${SOURCE_REF} to clevercloud:${CLEVER_API_DEPLOY_REF}"
           exit 0
         fi
-        echo "[INFO] Pushing to Clever Cloud (this triggers a build on their side)..."
-        git push --force clevercloud "HEAD:${CLEVER_API_DEPLOY_REF}"
+        git push clevercloud "${SOURCE_REF}:${CLEVER_API_DEPLOY_REF}"
         echo "[OK] Push done — check Clever Cloud Console for build progress."
-
-    - name: Summary
-      if: always()
-      run: |
-        echo "========================================"
-        echo "  Deploy virida_api → Clever Cloud"
-        echo "========================================"
-        echo "Branch pushed: ${{ secrets.CLEVER_API_DEPLOY_REF }}"
-        echo "App id:        app_ff40e2dd-3bab-4a9b-82c4-8aa517a9a3f6"
-        echo "Console:       https://console.clever-cloud.com"

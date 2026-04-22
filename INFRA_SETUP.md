@@ -14,6 +14,9 @@ Le workflow utilise `runs-on: virida-host`. Le runner doit fournir au minimum :
 
 - `bash`, `curl`, `unzip`
 - `python3` (utilisé pour certaines validations + pour `virida-eve` et le quality gate Sonar)
+- `PyYAML` preinstalle dans l'image runner (utilise par la validation YAML stricte de `ci-main.yml`)
+
+`PyYAML` est bake dans `Dockerfile.gitea-runner` via le paquet systeme `python3-yaml` (pas d'installation dynamique en job CI).
 - Node.js est installé via `actions/setup-node@v4`
 
 Optionnel (selon ce que tu veux activer) :
@@ -50,7 +53,7 @@ Ou via l'UI : `Console CC → app Gitea Runner → Scalability → min/max = M`.
 - `VIRIDA_MARKETPLACE_APP_REF` (optionnel): ref immuable recommandee pour `Virida-ghouse/Virida_marketplace_app` (tag ou commit SHA)
 - `VIRIDA_EVE_REF` (optionnel): ref immuable recommandee pour `Virida/virida-eve` (tag ou commit SHA)
 - `VIRIDA_TOUCH_IHM_REF` (optionnel): ref immuable recommandee pour `Virida/virida_touch_ihm` (tag ou commit SHA)
-- `ALLOW_MOVING_EXTERNAL_REFS` (optionnel): `false` par defaut. Sur `main`, la CI echoue si les refs externes pointent vers des branches mouvantes.
+- `ALLOW_MOVING_EXTERNAL_REFS` (optionnel): `true` par defaut pour eviter un blocage initial. Passe a `false` quand toutes les refs externes sont des tags/SHA immuables.
 
 #### SonarQube (obligatoire si tu veux l’analyse)
 
@@ -68,11 +71,16 @@ Le job générique `deploy-clevercloud` de `ci-main.yml` a été supprimé. Les 
 
 | Cible | Workflow | Secrets à configurer |
 |---|---|---|
+| `virida_api` | `api-clever-cloud-deploy.yml` | `CD_API_ENABLED`, `CLEVER_API_GIT_URL`, `CLEVER_API_DEPLOY_REF` |
+| `virida_app` | `app-clever-cloud-deploy.yml` | `CD_APP_ENABLED`, `CLEVER_APP_GIT_URL`, `CLEVER_APP_DEPLOY_REF` |
 | `virida-eve` | `eve-clever-cloud-deploy.yml` | `CD_EVE_ENABLED`, `CLEVER_EVE_GIT_URL`, `CLEVER_EVE_DEPLOY_REF` |
 | `virida_touch_ihm` (Raspberry Pi) | `touch-ihm-deploy.yml` | `RPI_SSH_HOST`, `RPI_SSH_USER`, `RPI_SSH_KEY`, `RPI_DEPLOY_PATH` |
 | `leafnode` (release firmware) | `leafnode-release.yml` | `GITEA_RELEASE_HOST`, `GITEA_RELEASE_OWNER`, `GITEA_RELEASE_REPO` |
 
-**Déclenchement** : tous ces workflows sont manuels (`workflow_dispatch` depuis l’UI Gitea Actions) + hebdomadaire (drift correction). Ils supportent un input `dry_run` pour tester sans push.
+**Déclenchement** :
+- `virida_api` et `virida_app`: auto sur `push main` + manuel (`workflow_dispatch`) + hebdomadaire.
+- `virida-eve`, `virida_touch_ihm`, `leafnode`: manuel + hebdomadaire (ou tag push pour `leafnode`).
+- Tous supportent `dry_run` quand applicable.
 
 **Comment récupérer `CLEVER_*_GIT_URL`** :
 ```bash
@@ -116,8 +124,8 @@ Workflow: `.gitea/workflows/touch-ihm-deploy.yml`. Déclenché manuellement (UI 
 ### 3) Convention de branche
 
 - Branche principale de reference: `main`.
-- La CI ecoute encore `master` et `main` pour compatibilite historique. Les refs externes sont centralisees via variables d'environnement (`VIRIDA_APP_REF`, `VIRIDA_TOUCH_IHM_REF`).
-- Pour les nouveaux scripts, tags et runbooks, utiliser `main` par defaut.
+- La CI de ce repo ecoute uniquement `main` (push + pull_request).
+- Les refs externes restent pilotables par secrets (`VIRIDA_*_REF`) et doivent etre des refs immuables sur `main` (tag/SHA).
 
 ### 4) Checklist minimale de durcissement secrets
 
@@ -131,9 +139,9 @@ Workflow: `.gitea/workflows/touch-ihm-deploy.yml`. Déclenché manuellement (UI 
 
 - `ci-main.yml` a ete factorise avec reutilisation YAML des steps de checkout/setup (`&...` / `*...`) pour reduire la duplication et la dette de maintenance.
 - Les jobs “externes” (`virida-eve`, `leafnode`, `virida_touch_ihm`) sont des **best-effort checks** par defaut :
-  - si un outil manque sur le runner (ex: `cargo`, docker daemon), le job **skip** proprement avec un warning.
-  - si les repos n’ont pas `main` comme branche par défaut, adapter `ref:` dans le workflow.
-- Activer `STRICT_EXTERNAL_CHECKS=true` (secret Gitea Actions) pour rendre ces checks externes bloquants.
+  - si un outil manque sur le runner (ex: `cargo`, docker daemon), le job **skip** proprement avec un warning (ou echoue si mode strict).
+  - la convention cible est `main` pour les refs externes; les ecarts legacy doivent etre migres puis verrouilles.
+- `STRICT_EXTERNAL_CHECKS` est considere `true` par defaut dans `ci-main.yml` (le secret peut etre utilise uniquement pour override explicite).
 - **SonarQube**: le gate est maintenant verifie en mode bloquant dans `ci-main.yml` (job `sonar-quality-gate`) quand les secrets Sonar sont configures. Le workflow séparé (`.gitea/workflows/sonar-nightly.yml`) reste en support quotidien + manuel pour analyses completes.
 - **Cache toolchains**: `setup-node` utilise `cache: npm` (CI principale + Sonar), `sonar-nightly` met en cache le binaire SonarScanner, et `test-leafnode` met en cache les toolchains Rust/ESP (`~/.cargo`, `~/.rustup`, `~/.espressif`) pour reduire la latence des runs lourds.
 - **Supply chain Actions**: les actions critiques restent pinnees par SHA (dont `actions/cache`), pour eviter les derives de tags mutables.

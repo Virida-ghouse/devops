@@ -4,36 +4,36 @@
 actions:
   # Actions de base
   - name: checkout
-    version: v3
+    version: 34e114876b0b11c390a56381ad16ebd13914f8d5 # actions/checkout v4
     url: https://github.com/actions/checkout
     
   - name: setup-node
-    version: v3
+    version: 49933ea5288caeca8642d1e84afbd3f7d6820020 # actions/setup-node v4
     url: https://github.com/actions/setup-node
     
   - name: setup-python
-    version: v4
+    version: 7f4fc3e22c37d6ff65e88745f38bd3157c663f7c # actions/setup-python v4
     url: https://github.com/actions/setup-python
     
   - name: upload-artifact
-    version: v3
+    version: ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5 # actions/upload-artifact v3
     url: https://github.com/actions/upload-artifact
     
   - name: download-artifact
-    version: v3
+    version: 9bc31d5ccc31df68ecc42ccf4149144866c47d8a # actions/download-artifact v3
     url: https://github.com/actions/download-artifact
     
   # Actions de sécurité
   - name: trivy-action
-    version: master
+    version: 915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2 # aquasecurity/trivy-action v0.28.0
     url: https://github.com/aquasecurity/trivy-action
     
   # Actions de déploiement
   - name: gh-pages
-    version: v3
+    version: 4a2e02b36f31d8974a0d09d3bb9f3172aa2d0d0d # peaceiris/actions-gh-pages v3
     url: https://github.com/peaceiris/actions-gh-pages
     
   # Actions de test
   - name: codecov
-    version: v3
+    version: ab904c41d6ece82784817410c45d8b8c02684457 # codecov/codecov-action v3
     url: https://github.com/codecov/codecov-action

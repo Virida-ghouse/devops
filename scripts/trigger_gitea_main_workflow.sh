@@ -42,11 +42,16 @@ if [[ -z "$WORKFLOW_ID" ]] || [[ "$WORKFLOW_ID" == "null" ]]; then
   echo "Using workflow file name: $WORKFLOW_ID"
 fi
 
-echo "Dispatching workflow: $WORKFLOW_ID on branch master..."
+TARGET_REF="${TARGET_REF:-main}"
+if [[ "$TARGET_REF" != "main" ]]; then
+  echo "::error::Only TARGET_REF=main is supported by policy."
+  exit 1
+fi
+echo "Dispatching workflow: $WORKFLOW_ID on branch ${TARGET_REF}..."
 HTTP=$(curl -s -w "%{http_code}" -o /tmp/gitea_dispatch_resp.txt -X POST \
   -H "Authorization: token $GITEA_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"ref":"master"}' \
+  -d "{\"ref\":\"${TARGET_REF}\"}" \
   "$BASE/$WORKFLOW_ID/dispatches")
 BODY=$(cat /tmp/gitea_dispatch_resp.txt)
 

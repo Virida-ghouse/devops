@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# DEPRECATED: script legacy de configuration Gitea Actions.
+# Source de vérité: INFRA_SETUP.md et CD_SETUP.md.
 # Script de configuration complète Gitea Actions
 # Usage: ./configure-gitea-complete.sh
 
@@ -12,7 +14,7 @@ echo "=============================================="
 GITEA_URL="https://app-5d976fde-cfd7-4662-9fff-49ed6f693eee.cleverapps.io"
 REPO_URL="$GITEA_URL/crk_test/virida"
 RUNNER_NAME="virida-runner-$(hostname)"
-RUNNER_LABELS="ubuntu-latest:docker://node:18,python:docker://python:3.11,golang:docker://golang:1.21"
+RUNNER_LABELS="ubuntu-latest:docker://node:20,python:docker://python:3.11,golang:docker://golang:1.21"
 
 # Couleurs
 GREEN='\033[0;32m'
@@ -39,6 +41,7 @@ log_debug() {
 
 echo ""
 log_info "Configuration complète de Gitea Actions pour VIRIDA"
+log_warn "Ce script est DEPRECATED. Utiliser INFRA_SETUP.md et CD_SETUP.md comme référence principale."
 echo ""
 
 echo "Etapes de configuration :"
@@ -73,12 +76,17 @@ echo "   d) Démarrer le runner :"
 echo "      act_runner daemon"
 echo ""
 
-echo "3. 🔐 Configurer les Secrets :"
+echo "3. 🔐 Configurer les Secrets (mode CD actuel) :"
 echo "   - Allez sur: $REPO_URL/settings/secrets/actions"
 echo "   - Ajoutez ces secrets :"
-echo "     - CLEVER_TOKEN: Votre token Clever Cloud"
-echo "     - CLEVER_SECRET: Votre secret Clever Cloud"
-echo "     - SLACK_WEBHOOK_URL: (optionnel) Webhook Slack"
+echo "     - GITEA: PAT lecture des repos Virida/*"
+echo "     - SONAR_TOKEN / SONAR_HOST_URL: intégration SonarQube"
+echo "     - CD_EVE_ENABLED / CLEVER_EVE_GIT_URL / CLEVER_EVE_DEPLOY_REF: déploiement EVE"
+echo "     - RPI_SSH_* / RPI_DEPLOY_PATH: déploiement Touch IHM"
+echo "     - (optionnel) SLACK_WEBHOOK_URL"
+echo ""
+echo "   Note: ce script est legacy pour l'onboarding runner."
+echo "   La source de vérité CI/CD est dans INFRA_SETUP.md et CD_SETUP.md."
 echo ""
 
 echo "4. Tester le Pipeline :"
@@ -118,7 +126,7 @@ echo "  - Résumé exécutif: RESUME-EXECUTIF-CI-CD-VIRIDA.md"
 echo ""
 
 echo "🆘 Support :"
-echo "  - Test pipeline: ./scripts/test-pipeline-gitea.sh"
+echo "  - Test pipeline: ./scripts/test-local.sh"
 echo "  - Configuration manuelle: ./scripts/configure-gitea-runner-manual.sh"
 echo "  - Upload code: ./scripts/upload-to-gitea.sh"
 echo ""

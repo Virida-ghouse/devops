@@ -17,7 +17,7 @@ Si un jour la pipeline apparaît dans la liste (par exemple après une exécutio
 
 - Onglet **Actions** du dépôt **devops** sur Gitea.
 - Menu déroulant « Run workflow » → choisir **VIRIDA CI - Main Pipeline**.
-- Branche : **master** → **Run workflow**.
+- Branche : **main** (ou **master** en compatibilité) → **Run workflow**.
 
 ### 2. Via l’API Gitea (première fois)
 
@@ -30,7 +30,7 @@ export GITEA_TOKEN="votre_token_avec_droits_repo"
 ./scripts/trigger_gitea_main_workflow.sh Virida devops
 ```
 
-Cela envoie un « workflow_dispatch » pour `ci-main.yml` sur la branche **master**. Une fois cette exécution lancée (et visible dans l’onglet Actions), **VIRIDA CI - Main Pipeline** restera disponible dans la liste déroulante.
+Cela envoie un « workflow_dispatch » pour `ci-main.yml` sur la branche **main** (par défaut). Une fois cette exécution lancée (et visible dans l’onglet Actions), **VIRIDA CI - Main Pipeline** restera disponible dans la liste déroulante.
 
 ### Miroir (pull) et déclenchement des workflows
 
