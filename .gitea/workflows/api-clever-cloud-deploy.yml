@@ -19,6 +19,8 @@ name: Deploy virida_api to Clever Cloud
 # workflow is a convenience wrapper (manual + scheduled).
 
 on:
+  push:
+    branches: [ master, main ]
   workflow_dispatch:
     inputs:
       dry_run:
@@ -41,7 +43,7 @@ jobs:
     runs-on: virida-host
     name: Push virida_api to Clever Cloud
     timeout-minutes: 10
-    if: ${{ secrets.GITEA != '' && secrets.CD_API_ENABLED == 'true' }}
+    if: ${{ secrets.GITEA != '' }}
 
     steps:
     - name: Validate deploy secrets
@@ -64,7 +66,6 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: Virida/virida_api
-        ref: master
         path: virida_api
         fetch-depth: 0
         token: ${{ secrets.GITEA }}

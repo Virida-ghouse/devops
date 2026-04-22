@@ -2,14 +2,17 @@ name: VIRIDA CI - Main Pipeline
 
 on:
   push:
-    branches: [ master ]
+    branches: [ master, main ]
   pull_request:
-    branches: [ master ]
+    branches: [ master, main ]
   # Mirror mode on Gitea does not emit push events for synced commits.
   # This schedule keeps CI automatic even when repo is a pull-mirror.
   schedule:
-    - cron: '*/15 * * * *'
+    - cron: '*/30 * * * *'
   workflow_dispatch:
+concurrency:
+  group: ci-main-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   NODE_VERSION: '20.19.0'
@@ -148,7 +151,7 @@ jobs:
           echo "[INFO] No compose file found."
         fi
 
-        # Locate Dockerfile (root or docker/ subdir)
+        # Dockerfile + build context presence checks (light validation)
         DOCKERFILE=""
         BUILD_CONTEXT="."
         if [ -f "Dockerfile" ]; then
@@ -158,15 +161,35 @@ jobs:
           BUILD_CONTEXT="docker"
         fi
         if [ -n "$DOCKERFILE" ]; then
-          echo "[OK] Building image from $DOCKERFILE (context=$BUILD_CONTEXT)..."
+          echo "[OK] Dockerfile found: $DOCKERFILE"
+          if [ ! -d "$BUILD_CONTEXT" ]; then
+            echo "::error::Build context directory missing: $BUILD_CONTEXT"
+            exit 1
+          fi
+          echo "[OK] Build context found: $BUILD_CONTEXT"
+        else
+          echo "::warning::No Dockerfile found; skipping container build."
+          exit 0
+        fi
+
+        # Hadolint (best-effort): validates Dockerfile syntax and common issues.
+        # We keep this non-blocking on runners where hadolint isn't available.
+        if command -v hadolint >/dev/null 2>&1; then
+          echo "[OK] Running hadolint on $DOCKERFILE"
+          hadolint "$DOCKERFILE" || echo "::warning::hadolint reported issues"
+        else
+          echo "::warning::hadolint not installed on runner; skipping Dockerfile lint."
+        fi
+
+        if [ -n "$DOCKERFILE" ]; then
+          echo "[OK] Trying container build from $DOCKERFILE (context=$BUILD_CONTEXT)..."
           # Podman rootless needs user namespaces (CLONE_NEWUSER) which are
           # blocked on Clever Cloud PaaS. We try the build but don't fail CI
-          # if the sandbox forbids re-exec. Image push job performs the real
-          # build on a properly-privileged runner.
+          # if the sandbox forbids re-exec.
           if ! docker build -f "$DOCKERFILE" -t "virida-eve:ci" "$BUILD_CONTEXT" 2>/tmp/build.err; then
             if grep -qiE 'operation not permitted|cannot re-exec|CLONE_NEWUSER|user namespace' /tmp/build.err 2>/dev/null; then
               echo "::warning::Container build skipped: runner sandbox forbids user namespaces (rootless Podman limitation on PaaS)."
-              echo "::warning::Dockerfile and context are valid — build will run on a privileged runner if configured."
+              echo "::warning::Dockerfile/context checks passed; full build cannot run on this runner."
               echo "[DEBUG] --- build.err (head) ---"
               head -n 20 /tmp/build.err || true
             else
@@ -267,6 +290,7 @@ jobs:
         fi
         docker push "${IMAGE_TAG}"
         echo "[OK] Pushed ${IMAGE_TAG}"
+
 
   # ========================================
   # TESTS LEAFNODE (leafnode - Rust) [external repo]
@@ -397,7 +421,25 @@ jobs:
           fi
         fi
         npm run -s lint || echo "::warning::No lint script (or lint failed)"
-        npm run -s build || echo "::warning::No build script (or build failed)"
+
+        # Advisory build only: do not fail CI if this external repo build is
+        # killed by runner limits (OOM/SIGTERM) or exceeds a soft timeout.
+        export NODE_OPTIONS="${NODE_OPTIONS:-} --max-old-space-size=1024 --no-warnings"
+        if command -v timeout >/dev/null 2>&1; then
+          timeout 12m npm run -s build || BUILD_RC=$?
+        else
+          npm run -s build || BUILD_RC=$?
+        fi
+        BUILD_RC="${BUILD_RC:-0}"
+        if [ "$BUILD_RC" -eq 0 ]; then
+          echo "[OK] virida_touch_ihm build"
+        elif [ "$BUILD_RC" -eq 124 ]; then
+          echo "::warning::virida_touch_ihm build timed out (advisory step)"
+        elif [ "$BUILD_RC" -eq 137 ] || [ "$BUILD_RC" -eq 143 ]; then
+          echo "::warning::virida_touch_ihm build terminated (likely OOM/runner limits, advisory step)"
+        else
+          echo "::warning::virida_touch_ihm build failed with exit code $BUILD_RC (advisory step)"
+        fi
 
   # ========================================
   # TESTS FRONTEND (virida_app)
@@ -660,21 +702,22 @@ jobs:
     - name: Build Frontend
       if: ${{ hashFiles('virida_app/package.json') != '' }}
       working-directory: virida_app
+      timeout-minutes: 20
       env:
         VITE_API_URL: ${{ secrets.VITE_API_URL || '' }}
       run: |
         set -e
-        if npm ci --ignore-scripts; then
+        if npm ci --ignore-scripts --no-audit --fund=false; then
           echo "[OK] npm ci"
         else
           if [ "${NPM_CI_FALLBACK_INSTALL}" = "true" ]; then
             echo "[WARN] npm ci failed (lockfile mismatch). Falling back to npm install."
-            npm install --ignore-scripts
+            npm install --ignore-scripts --no-audit --fund=false
           else
             exit 1
           fi
         fi
-        NODE_OPTIONS="--max-old-space-size=1024 --no-warnings" npm run build
+        NODE_OPTIONS="--max-old-space-size=1536 --no-warnings" npm run build
         echo "[OK] Frontend build successful"
         
     - name: Build Backend

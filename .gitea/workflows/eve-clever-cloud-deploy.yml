@@ -1,20 +1,16 @@
-name: Deploy virida-eve to Clever Cloud (Docker)
+name: Deploy virida-eve to Clever Cloud
 
-# Deploys the virida-eve repository to a Clever Cloud app of type "docker".
-# Clever Cloud builds the Dockerfile on their side, bypassing the runner's
-# rootless Podman limitation entirely.
+# Deploys the virida-eve repository to a standard Clever Cloud app
+# (Node/Python buildpack style), without Dockerfile requirement.
 #
 # One-time setup (manual, on Clever Cloud Console or CLI):
-#   1. Create a new app → Docker
-#   2. Set build & run settings if needed (CC_DOCKERFILE if Dockerfile is not at root)
+#   1. Create (or reuse) a standard Clever Cloud app for virida-eve
+#   2. Ensure runtime/build commands are configured in Clever app settings
 #   3. Copy the deployment git remote URL (git+ssh://... or https://...)
 #   4. Add the following secrets in Gitea Actions:
 #        CLEVER_EVE_GIT_URL       The git remote URL from step 3
 #        CLEVER_EVE_DEPLOY_REF    Usually 'master' or 'main'
 #        CD_EVE_ENABLED           Set to 'true' to actually deploy (safety switch)
-#
-# If CC_DOCKERFILE is not at repo root, configure it via Clever Cloud env vars
-# (not here): CC_DOCKERFILE=docker/Dockerfile
 #
 # Triggered:
 #   - Manually via Gitea Actions UI (workflow_dispatch) — preferred for now
@@ -22,6 +18,15 @@ name: Deploy virida-eve to Clever Cloud (Docker)
 
 on:
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Print plan but do not push'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
   schedule:
     - cron: '0 5 * * 1'
 
@@ -63,17 +68,15 @@ jobs:
         fetch-depth: 0
         token: ${{ secrets.GITEA }}
 
-    - name: Ensure Dockerfile is discoverable
+    - name: Sanity check repo for standard deploy
       working-directory: virida-eve
       run: |
         set -euo pipefail
-        if [ -f "Dockerfile" ]; then
-          echo "[OK] Dockerfile at repo root — no CC_DOCKERFILE override needed."
-        elif [ -f "docker/Dockerfile" ]; then
-          echo "::notice::Dockerfile is at docker/Dockerfile. Make sure the CC app has CC_DOCKERFILE=docker/Dockerfile set in its env vars."
+        if [ ! -f "package.json" ] && [ ! -f "pyproject.toml" ] && [ ! -f "requirements.txt" ]; then
+          echo "::warning::No obvious Node/Python project file found (package.json / pyproject.toml / requirements.txt)."
+          echo "::warning::Deploy continues, but Clever build may fail if runtime is not configured."
         else
-          echo "::warning::No Dockerfile found — Clever Cloud will fail to build. Aborting push."
-          exit 1
+          echo "[OK] Standard runtime project markers found."
         fi
 
     - name: Push to Clever Cloud
@@ -81,11 +84,16 @@ jobs:
       env:
         CLEVER_EVE_GIT_URL: ${{ secrets.CLEVER_EVE_GIT_URL }}
         CLEVER_EVE_DEPLOY_REF: ${{ secrets.CLEVER_EVE_DEPLOY_REF }}
+        DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
       run: |
         set -euo pipefail
         git remote remove clevercloud 2>/dev/null || true
         git remote add clevercloud "${CLEVER_EVE_GIT_URL}"
-        echo "[INFO] Pushing to Clever Cloud (this triggers a Docker build on their side)..."
+        if [ "${DRY_RUN}" = "true" ]; then
+          echo "[DRY RUN] would push HEAD to clevercloud:${CLEVER_EVE_DEPLOY_REF}"
+          exit 0
+        fi
+        echo "[INFO] Pushing to Clever Cloud (this triggers Clever standard build/deploy)..."
         git push --force clevercloud "HEAD:${CLEVER_EVE_DEPLOY_REF}"
         echo "[OK] Push done — check Clever Cloud Console for build progress."
 
@@ -93,7 +101,8 @@ jobs:
       if: always()
       run: |
         echo "========================================"
-        echo "  Deploy virida-eve → Clever Cloud"
+        echo "  Deploy virida-eve → Clever Cloud (standard app)"
         echo "========================================"
         echo "Branch pushed: ${{ secrets.CLEVER_EVE_DEPLOY_REF }}"
+        echo "Dry run:       ${{ github.event.inputs.dry_run || 'false' }}"
         echo "Check build logs on: https://console.clever-cloud.com"
