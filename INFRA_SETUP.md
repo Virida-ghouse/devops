@@ -2,11 +2,11 @@
 
 Ce dépôt orchestre la CI via **Gitea Actions** (workflow `/.gitea/workflows/ci-main.yml`) et inclut les assets Docker pour **SonarQube**.
 
-> Scripts `scripts/configure-gitea-complete.sh` et `scripts/deploy-sonarqube-virida-org.sh` : utilitaires **legacy/onboarding**.
-> Les valeurs de secrets ne doivent jamais y être hardcodées. La source de vérité reste ce document + `CD_SETUP.md`.
+> Les anciens scripts legacy d'onboarding ont ete retires du depot.
+> Les valeurs de secrets ne doivent jamais etre hardcodees. La source de verite reste ce document + `CD_SETUP.md`.
 
 > Si le repo est en **pull mirror** (GitHub -> Gitea), les événements `push` ne déclenchent pas toujours les workflows en Gitea 1.22.x.
-> Les workflows principaux incluent donc un `schedule` periodique (toutes les 6h pour la CI principale) pour conserver un mode "auto" sans desactiver le mirror.
+> Les workflows principaux incluent donc un `schedule` periodique (toutes les 10 min pour la CI principale) pour conserver un mode "auto" sans desactiver le mirror.
 
 ### 1) Pré-requis runner (`virida-host`)
 
@@ -49,16 +49,16 @@ Ou via l'UI : `Console CC → app Gitea Runner → Scalability → min/max = M`.
 - `GH_TOKEN_MARKETPLACE` (obligatoire): token GitHub (scope repo read) pour cloner `Virida-ghouse/Virida_marketplace_api` et `Virida-ghouse/Virida_marketplace_app` (repos privés)
 - `VIRIDA_API_REF` (optionnel): ref immuable recommandee pour `Virida/virida_api` (tag ou commit SHA)
 - `VIRIDA_APP_REF` (optionnel): ref immuable recommandee pour `Virida/virida_app` (tag ou commit SHA)
-- `VIRIDA_MARKETPLACE_API_REF` (optionnel): ref immuable recommandee pour `Virida-ghouse/Virida_marketplace_api` (tag ou commit SHA)
+- `VIRIDA_MARKETPLACE_API_REF` (optionnel): ref immuable recommandee pour `Virida-ghouse/Virida_marketplace_api` (tag ou commit SHA). Par defaut: `main`
 - `VIRIDA_MARKETPLACE_APP_REF` (optionnel): ref immuable recommandee pour `Virida-ghouse/Virida_marketplace_app` (tag ou commit SHA)
 - `VIRIDA_EVE_REF` (optionnel): ref immuable recommandee pour `Virida/virida-eve` (tag ou commit SHA)
 - `VIRIDA_TOUCH_IHM_REF` (optionnel): ref immuable recommandee pour `Virida/virida_touch_ihm` (tag ou commit SHA)
-- `ALLOW_MOVING_EXTERNAL_REFS` (optionnel): `true` par defaut pour eviter un blocage initial. Passe a `false` quand toutes les refs externes sont des tags/SHA immuables.
+- `ALLOW_MOVING_EXTERNAL_REFS` (optionnel): `false` par defaut (mode securise). Ne passez temporairement a `true` que pour une migration controlee et bornee dans le temps.
 
 #### SonarQube (obligatoire si tu veux l’analyse)
 
 - `SONAR_HOST_URL`: racine de l’instance, ex `https://ton-sonarqube.domaine`
-- `SONAR_TOKEN`: token SonarQube avec permission **Execute Analysis**
+- `SONAR_TOKEN`: token SonarQube avec permissions **Execute Analysis** + **Browse** (ou admin projet) pour permettre le scan **et** la verification bloquante des quality gates
 - `SONAR_HARD_GATE_ENABLED` (optionnel): laisser vide ou `true` pour appliquer le hard gate dans `ci-main.yml` quand les secrets Sonar sont presents
 
 #### Frontend build (optionnel mais recommandé)
@@ -71,16 +71,18 @@ Le job générique `deploy-clevercloud` de `ci-main.yml` a été supprimé. Les 
 
 | Cible | Workflow | Secrets à configurer |
 |---|---|---|
-| `virida_api` | `api-clever-cloud-deploy.yml` | `CD_API_ENABLED`, `CLEVER_API_GIT_URL`, `CLEVER_API_DEPLOY_REF` |
-| `virida_app` | `app-clever-cloud-deploy.yml` | `CD_APP_ENABLED`, `CLEVER_APP_GIT_URL`, `CLEVER_APP_DEPLOY_REF` |
+| `virida_api` | `api-clever-cloud-deploy.yml` | `CD_API_ENABLED`, `CD_API_AUTO_DEPLOY`, `CLEVER_API_GIT_URL`, `CLEVER_API_DEPLOY_REF` |
 | `virida-eve` | `eve-clever-cloud-deploy.yml` | `CD_EVE_ENABLED`, `CLEVER_EVE_GIT_URL`, `CLEVER_EVE_DEPLOY_REF` |
 | `virida_touch_ihm` (Raspberry Pi) | `touch-ihm-deploy.yml` | `RPI_SSH_HOST`, `RPI_SSH_USER`, `RPI_SSH_KEY`, `RPI_DEPLOY_PATH` |
 | `leafnode` (release firmware) | `leafnode-release.yml` | `GITEA_RELEASE_HOST`, `GITEA_RELEASE_OWNER`, `GITEA_RELEASE_REPO` |
 
 **Déclenchement** :
-- `virida_api` et `virida_app`: auto sur `push main` + manuel (`workflow_dispatch`) + hebdomadaire.
+- `virida_api`: auto sur `push main` + manuel (`workflow_dispatch`) + hebdomadaire.
 - `virida-eve`, `virida_touch_ihm`, `leafnode`: manuel + hebdomadaire (ou tag push pour `leafnode`).
 - Tous supportent `dry_run` quand applicable.
+
+Le workflow `virida_api` attend l'etat `success` des checks CI du commit avant de pousser vers Clever Cloud.
+En mode `push`, ce workflow checkout egalement `github.sha` (meme artefact code que celui valide par CI).
 
 **Comment récupérer `CLEVER_*_GIT_URL`** :
 ```bash

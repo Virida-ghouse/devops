@@ -2,13 +2,14 @@ name: VIRIDA CI - Main Pipeline
 
 on:
   push:
-    branches: [ main ]
+    branches: [ '**' ]
   pull_request:
     branches: [ main ]
   # Mirror mode on Gitea does not emit push events for synced commits.
   # This schedule keeps CI automatic even when repo is a pull-mirror.
+  # Mirror sync interval is 10 minutes on this repository.
   schedule:
-    - cron: '0 */6 * * *'
+    - cron: '*/10 * * * *'
   workflow_dispatch:
 concurrency:
   group: ci-main-${{ github.ref }}
@@ -22,8 +23,8 @@ env:
   VIRIDA_TOUCH_IHM_REF: ${{ secrets.VIRIDA_TOUCH_IHM_REF || 'main' }}
   VIRIDA_EVE_REF: ${{ secrets.VIRIDA_EVE_REF || 'main' }}
   LEAFNODE_REF: ${{ secrets.LEAFNODE_REF || 'main' }}
-  # Keep CI non-blocking by default; set secret to 'false' to enforce immutable refs on main.
-  ALLOW_MOVING_EXTERNAL_REFS: ${{ secrets.ALLOW_MOVING_EXTERNAL_REFS || 'true' }}
+  # Immutable external refs are enforced by default on main.
+  ALLOW_MOVING_EXTERNAL_REFS: ${{ secrets.ALLOW_MOVING_EXTERNAL_REFS || 'false' }}
   # SonarScanner CLI (no Docker) settings
   SONAR_SCANNER_VERSION: "8.0.1.6346"
   SONAR_SCANNER_DIR: "/tmp/sonar-scanner"
@@ -64,7 +65,8 @@ jobs:
           exit 0
         fi
         if [ "${ALLOW_MOVING_EXTERNAL_REFS}" = "true" ]; then
-          echo "[INFO] ALLOW_MOVING_EXTERNAL_REFS=true, skipping immutable ref enforcement."
+          echo "::warning::ALLOW_MOVING_EXTERNAL_REFS=true: transitional mode enabled, immutable refs are not enforced on main."
+          echo "::warning::Set ALLOW_MOVING_EXTERNAL_REFS=false after migrating all VIRIDA_*_REF secrets to tags/SHA."
           exit 0
         fi
         for ref in "${VIRIDA_API_REF}" "${VIRIDA_APP_REF}" "${VIRIDA_TOUCH_IHM_REF}" "${VIRIDA_EVE_REF}" "${LEAFNODE_REF}"; do
@@ -750,6 +752,92 @@ jobs:
         set -euo pipefail
         /tmp/gitleaks detect --source . --redact --exit-code 1 --config .gitleaks.toml
 
+    - name: Install Trivy CLI
+      run: |
+        set -euo pipefail
+        TRIVY_VERSION="0.64.1"
+        URL="https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+        curl -fsSL "${URL}" -o /tmp/trivy.tar.gz
+        tar -xzf /tmp/trivy.tar.gz -C /tmp trivy
+        chmod +x /tmp/trivy
+        /tmp/trivy --version
+
+    - name: Trivy filesystem scan (blocking on high/critical)
+      run: |
+        set -euo pipefail
+        /tmp/trivy fs \
+          --scanners vuln,secret \
+          --severity HIGH,CRITICAL \
+          --exit-code 1 \
+          --no-progress \
+          .
+
+    - name: Trivy IaC scan (blocking on high/critical)
+      run: |
+        set -euo pipefail
+        /tmp/trivy config \
+          --severity HIGH,CRITICAL \
+          --exit-code 1 \
+          --no-progress \
+          .
+
+    - name: Trivy container image scan (progressive)
+      env:
+        TRIVY_IMAGE_SCAN_ENABLED: ${{ secrets.TRIVY_IMAGE_SCAN_ENABLED || 'false' }}
+        TRIVY_IMAGE_SCAN_ENFORCE: ${{ secrets.TRIVY_IMAGE_SCAN_ENFORCE || 'false' }}
+      run: |
+        set -euo pipefail
+        if [ "${TRIVY_IMAGE_SCAN_ENABLED}" != "true" ]; then
+          echo "[INFO] Image scan disabled (set TRIVY_IMAGE_SCAN_ENABLED=true to enable)."
+          exit 0
+        fi
+        if ! command -v docker >/dev/null 2>&1; then
+          if [ "${TRIVY_IMAGE_SCAN_ENFORCE}" = "true" ]; then
+            echo "::error::docker CLI missing while image scan is enforced."
+            exit 1
+          fi
+          echo "::warning::docker CLI missing; skipping image scan (progressive mode)."
+          exit 0
+        fi
+        # Lightweight target image from runner base.
+        docker pull alpine:3.21 >/dev/null
+        /tmp/trivy image --severity HIGH,CRITICAL --exit-code 1 --no-progress alpine:3.21
+
+    - name: Install Semgrep (progressive SAST)
+      env:
+        SAST_SEMGREP_ENABLED: ${{ secrets.SAST_SEMGREP_ENABLED || 'false' }}
+      run: |
+        set -euo pipefail
+        if [ "${SAST_SEMGREP_ENABLED}" != "true" ]; then
+          echo "[INFO] SAST disabled (set SAST_SEMGREP_ENABLED=true to enable)."
+          exit 0
+        fi
+        python3 -m pip install --user --upgrade pip semgrep
+        "$HOME/.local/bin/semgrep" --version
+
+    - name: Semgrep SAST scan (progressive)
+      env:
+        SAST_SEMGREP_ENABLED: ${{ secrets.SAST_SEMGREP_ENABLED || 'false' }}
+        SAST_SEMGREP_ENFORCE: ${{ secrets.SAST_SEMGREP_ENFORCE || 'false' }}
+      run: |
+        set -euo pipefail
+        if [ "${SAST_SEMGREP_ENABLED}" != "true" ]; then
+          exit 0
+        fi
+        set +e
+        "$HOME/.local/bin/semgrep" --config auto --error --metrics=off .
+        RC=$?
+        set -e
+        if [ "$RC" -eq 0 ]; then
+          echo "[OK] Semgrep passed."
+          exit 0
+        fi
+        if [ "${SAST_SEMGREP_ENFORCE}" = "true" ]; then
+          echo "::error::Semgrep found blocking issues (enforced mode)."
+          exit "$RC"
+        fi
+        echo "::warning::Semgrep found issues (progressive mode, non-blocking)."
+
   # ========================================
   # BUILD
   # ========================================
@@ -803,12 +891,41 @@ jobs:
         SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
       run: |
         set -euo pipefail
+        SONAR_TOKEN_CLEAN="$(printf '%s' "${SONAR_TOKEN}" | tr -d '\r\n')"
         SONAR_HOST_URL_CLEAN="$(printf '%s' "${SONAR_HOST_URL}" | tr -d '\r\n' | sed -E 's#(https?://[^/]+).*#\1#')"
+        if [ -z "${SONAR_TOKEN_CLEAN}" ]; then
+          echo "::error::SONAR_TOKEN empty after trim"
+          exit 1
+        fi
         check_gate() {
           local key="$1"
           local resp
           local status
-          resp="$(curl -fsS -u "${SONAR_TOKEN}:" "${SONAR_HOST_URL_CLEAN}/api/qualitygates/project_status?projectKey=${key}")"
+          local endpoint="${SONAR_HOST_URL_CLEAN}/api/qualitygates/project_status?projectKey=${key}"
+          local body_file
+          local http_code
+          body_file="$(mktemp)"
+          http_code="$(curl -sS -o "${body_file}" -w "%{http_code}" \
+            -H "Authorization: Bearer ${SONAR_TOKEN_CLEAN}" \
+            "${endpoint}")"
+          if [ "${http_code}" = "401" ] || [ "${http_code}" = "403" ]; then
+            http_code="$(curl -sS -o "${body_file}" -w "%{http_code}" \
+              -u "${SONAR_TOKEN_CLEAN}:" \
+              "${endpoint}")"
+          fi
+          if [ "${http_code}" != "200" ]; then
+            echo "::error::Unable to read Sonar quality gate for ${key} (HTTP ${http_code})."
+            if [ "${http_code}" = "401" ] || [ "${http_code}" = "403" ]; then
+              echo "::error::SONAR_TOKEN is valid for scan upload only, or lacks read access on '${key}'."
+              echo "::error::Required Sonar permissions: Execute Analysis + Browse (or project admin) on each project."
+            fi
+            echo "[DEBUG] endpoint=${endpoint}"
+            sed -n '1,120p' "${body_file}"
+            rm -f "${body_file}"
+            exit 1
+          fi
+          resp="$(cat "${body_file}")"
+          rm -f "${body_file}"
           status="$(echo "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin)["projectStatus"]["status"])')"
           echo "[INFO] ${key} quality gate: ${status}"
           if [ "${status}" != "OK" ]; then
@@ -936,7 +1053,6 @@ jobs:
   # ========================================
   # CD (Clever Cloud) — dedicated workflows in this repository:
   #   .gitea/workflows/api-clever-cloud-deploy.yml   → virida_api
-  #   .gitea/workflows/app-clever-cloud-deploy.yml   → virida_app
   #   .gitea/workflows/eve-clever-cloud-deploy.yml   → virida-eve
   #   .gitea/workflows/touch-ihm-deploy.yml          → virida_touch_ihm
   # Firmware release:

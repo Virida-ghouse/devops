@@ -55,7 +55,7 @@ act_runner register \
   --instance https://gitea.virida.org \
   --token "$REGISTRATION_TOKEN" \
   --name virida-runner-mac \
-  --labels ubuntu-latest:docker://node:18 \
+  --labels ubuntu-latest:docker://node:20 \
   --workdir "$RUNNER_WORK_DIR" \
   --no-interactive
 

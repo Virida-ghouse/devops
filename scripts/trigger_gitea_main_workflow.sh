@@ -42,9 +42,9 @@ if [[ -z "$WORKFLOW_ID" ]] || [[ "$WORKFLOW_ID" == "null" ]]; then
   echo "Using workflow file name: $WORKFLOW_ID"
 fi
 
-TARGET_REF="${TARGET_REF:-main}"
-if [[ "$TARGET_REF" != "main" ]]; then
-  echo "::error::Only TARGET_REF=main is supported by policy."
+TARGET_REF="${TARGET_REF:-master}"
+if [[ "$TARGET_REF" != "main" ]] && [[ "$TARGET_REF" != "master" ]]; then
+  echo "::error::Only TARGET_REF=main or TARGET_REF=master is supported by policy."
   exit 1
 fi
 echo "Dispatching workflow: $WORKFLOW_ID on branch ${TARGET_REF}..."

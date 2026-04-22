@@ -3,7 +3,6 @@
 Le deploiement n'est plus dans `ci-main.yml`. Les workflows CD/release actifs sont:
 
 - `.gitea/workflows/api-clever-cloud-deploy.yml` (deploiement `virida_api`)
-- `.gitea/workflows/app-clever-cloud-deploy.yml` (deploiement `virida_app`)
 - `.gitea/workflows/eve-clever-cloud-deploy.yml` (deploiement `virida-eve`)
 - `.gitea/workflows/touch-ihm-deploy.yml` (deploiement `virida_touch_ihm` sur Raspberry Pi)
 - `.gitea/workflows/leafnode-release.yml` (release firmware `leafnode`)
@@ -13,6 +12,7 @@ Le deploiement n'est plus dans `ci-main.yml`. Les workflows CD/release actifs so
 Secrets requis:
 
 - `CD_API_ENABLED`: `true` pour autoriser le deploiement
+- `CD_API_AUTO_DEPLOY`: `true` par defaut (auto sur push `main`)
 - `CLEVER_API_GIT_URL`: remote git Clever Cloud de `virida_api`
 - `CLEVER_API_DEPLOY_REF`: branche cible (`main`, `release/*`, `hotfix/*`)
 - `PROD_AUTO_APPROVED` (optionnel): `true` pour autoriser un deploiement planifie (schedule)
@@ -20,21 +20,8 @@ Secrets requis:
 Notes:
 
 - Auto-deploy sur `push main` quand `CD_API_ENABLED=true`.
-- Supporte `dry_run=true` en manuel.
-- Le workflow supporte `rollback_ref=<tag|sha|ref>`.
-
-## APP vers Clever Cloud
-
-Secrets requis:
-
-- `CD_APP_ENABLED`: `true` pour autoriser le deploiement
-- `CLEVER_APP_GIT_URL`: remote git Clever Cloud de `virida_app`
-- `CLEVER_APP_DEPLOY_REF`: branche cible (`main`, `release/*`, `hotfix/*`)
-- `PROD_AUTO_APPROVED` (optionnel): `true` pour autoriser un deploiement planifie (schedule)
-
-Notes:
-
-- Auto-deploy sur `push main` quand `CD_APP_ENABLED=true`.
+- Sur `push`, le checkout force `github.sha` (meme commit que celui valide par la gate CI).
+- Le workflow attend que la CI du commit soit en `success` avant le push Clever Cloud.
 - Supporte `dry_run=true` en manuel.
 - Le workflow supporte `rollback_ref=<tag|sha|ref>`.
 

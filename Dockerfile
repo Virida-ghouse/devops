@@ -11,7 +11,7 @@ ENV RUNNER_NAME="virida-runner"
 # the last one may win and your jobs may run in an image without Node, causing
 # JS-based actions (actions/checkout, actions/setup-node, ...) to fail with:
 # "Cannot find: node in PATH".
-ENV RUNNER_LABELS="ubuntu-latest:docker://node:18,python:docker://python:3.11,golang:docker://golang:1.21"
+ENV RUNNER_LABELS="ubuntu-latest:docker://node:20,python:docker://python:3.11,golang:docker://golang:1.21"
 ENV RUNNER_WORK_DIR="/tmp/act_runner/workspace"
 
 # Installer les dépendances système + Podman (daemonless container engine)

@@ -11,7 +11,7 @@ echo "===================================="
 # Variables (peuvent être overridées via l'environnement)
 : "${GITEA_INSTANCE_URL:=https://gitea.virida.org}"
 : "${RUNNER_NAME:=virida-runner-$(hostname)}"
-: "${RUNNER_LABELS:=ubuntu-latest:docker://node:18,python:docker://python:3.11,golang:docker://golang:1.21}"
+: "${RUNNER_LABELS:=ubuntu-latest:docker://node:20,python:docker://python:3.11,golang:docker://golang:1.21}"
 : "${RUNNER_WORK_DIR:=/tmp/act_runner/workspace}"
 
 # Compat (ancien nom utilisé par ce script)

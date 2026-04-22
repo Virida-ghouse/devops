@@ -38,6 +38,9 @@ concurrency:
 
 env:
   VIRIDA_API_REF: ${{ secrets.VIRIDA_API_REF || 'main' }}
+  CI_WAIT_ATTEMPTS: '180'
+  CI_WAIT_SLEEP_SECONDS: '20'
+  REQUIRED_CI_CONTEXT: 'VIRIDA CI - Main Pipeline'
 
 jobs:
   deploy:
@@ -89,11 +92,72 @@ jobs:
         fi
         echo "[OK] Scheduled deployment explicitly allowed."
 
+    - name: Auto-deploy strategy gate (API)
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        CD_API_AUTO_DEPLOY: ${{ secrets.CD_API_AUTO_DEPLOY || 'true' }}
+      run: |
+        set -euo pipefail
+        if [ "${EVENT_NAME}" != "push" ]; then
+          echo "[OK] Not a push event: strategy gate passed."
+          exit 0
+        fi
+        if [ "${CD_API_AUTO_DEPLOY}" != "true" ]; then
+          echo "::error::Auto-deploy on push is disabled for virida_api (set CD_API_AUTO_DEPLOY=true to enable)."
+          exit 1
+        fi
+        echo "[OK] Auto-deploy on push enabled for virida_api."
+
+    - name: Gate on CI main success for current SHA
+      if: ${{ github.event_name == 'push' }}
+      env:
+        GITEA_TOKEN: ${{ secrets.GITEA }}
+        REPO: ${{ github.repository }}
+        SHA: ${{ github.sha }}
+        SERVER_URL: ${{ github.server_url }}
+        CI_WAIT_ATTEMPTS: ${{ env.CI_WAIT_ATTEMPTS }}
+        CI_WAIT_SLEEP_SECONDS: ${{ env.CI_WAIT_SLEEP_SECONDS }}
+        REQUIRED_CI_CONTEXT: ${{ env.REQUIRED_CI_CONTEXT }}
+      run: |
+        set -euo pipefail
+        API="${SERVER_URL}/api/v1/repos/${REPO}/commits/${SHA}/status"
+        echo "[INFO] Waiting for CI success on commit ${SHA} (context='${REQUIRED_CI_CONTEXT}')..."
+        for i in $(seq 1 "${CI_WAIT_ATTEMPTS}"); do
+          RESP="$(curl -fsS -H "Authorization: token ${GITEA_TOKEN}" "${API}")"
+          STATE="$(echo "${RESP}" | python3 -c 'import json,sys; d=json.load(sys.stdin); print((d.get("state") or "").lower())')"
+          CTX_STATE="$(echo "${RESP}" | python3 -c 'import json,sys; d=json.load(sys.stdin); target=sys.argv[1].strip().lower(); statuses=d.get("statuses") or []; m=[(s.get("context") or "", (s.get("state") or "").lower()) for s in statuses if (s.get("context") or "").strip().lower()==target]; print(m[0][1] if m else "")' "${REQUIRED_CI_CONTEXT}")"
+          echo "[INFO] Attempt ${i}/${CI_WAIT_ATTEMPTS}, global=${STATE:-unknown}, context=${CTX_STATE:-missing}"
+          case "${STATE}" in
+            success)
+              if [ -n "${CTX_STATE}" ] && [ "${CTX_STATE}" != "success" ]; then
+                echo "[INFO] Global success reached but required context is '${CTX_STATE}', waiting..."
+                sleep "${CI_WAIT_SLEEP_SECONDS}"
+                continue
+              fi
+              echo "[OK] Commit status is success. Deploy can continue."
+              exit 0
+              ;;
+            failure|error)
+              echo "::error::CI checks failed for commit ${SHA}. Deployment blocked."
+              exit 1
+              ;;
+            pending|"")
+              sleep "${CI_WAIT_SLEEP_SECONDS}"
+              ;;
+            *)
+              echo "[INFO] Non-final status '${STATE}', waiting..."
+              sleep "${CI_WAIT_SLEEP_SECONDS}"
+              ;;
+          esac
+        done
+        echo "::error::Timed out while waiting for CI success on ${SHA}."
+        exit 1
+
     - name: Checkout virida_api
       uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       with:
         repository: Virida/virida_api
-        ref: ${{ env.VIRIDA_API_REF }}
+        ref: ${{ github.event_name == 'push' && github.sha || env.VIRIDA_API_REF }}
         path: virida_api
         fetch-depth: 0
         token: ${{ secrets.GITEA }}

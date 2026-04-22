@@ -11,7 +11,7 @@ echo "==============================================="
 # Variables
 GITEA_URL="https://app-5d976fde-cfd7-4662-9fff-49ed6f693eee.cleverapps.io"
 RUNNER_NAME="virida-runner-$(hostname)"
-RUNNER_LABELS="ubuntu-latest:docker://node:18,python:docker://python:3.11,golang:docker://golang:1.21"
+RUNNER_LABELS="ubuntu-latest:docker://node:20,python:docker://python:3.11,golang:docker://golang:1.21"
 
 # Couleurs
 GREEN='\033[0;32m'
@@ -83,7 +83,7 @@ echo "     - SLACK_WEBHOOK_URL: (optionnel) Pour les notifications"
 echo ""
 
 echo "6. 🧪 Tester le pipeline :"
-echo "   - Faites un commit sur la branche staging"
+echo "   - Faites un commit sur la branche main"
 echo "   - Vérifiez que le pipeline se déclenche"
 echo "   - Consultez les logs dans Gitea Actions"
 echo ""

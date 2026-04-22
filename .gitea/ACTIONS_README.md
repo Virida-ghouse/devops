@@ -17,7 +17,7 @@ Si un jour la pipeline apparaît dans la liste (par exemple après une exécutio
 
 - Onglet **Actions** du dépôt **devops** sur Gitea.
 - Menu déroulant « Run workflow » → choisir **VIRIDA CI - Main Pipeline**.
-- Branche : **main** (ou **master** en compatibilité) → **Run workflow**.
+- Branche : **main** → **Run workflow**.
 
 ### 2. Via l’API Gitea (première fois)
 

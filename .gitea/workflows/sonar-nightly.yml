@@ -8,7 +8,7 @@ name: SonarQube Analysis (auto)
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main ]
   schedule:
     - cron: '0 3 * * *'
   workflow_dispatch:
@@ -21,11 +21,11 @@ env:
   NODE_VERSION: '20.19.0'
   VIRIDA_API_REF: ${{ secrets.VIRIDA_API_REF || 'main' }}
   VIRIDA_APP_REF: ${{ secrets.VIRIDA_APP_REF || 'main' }}
-  VIRIDA_MARKETPLACE_API_REF: ${{ secrets.VIRIDA_MARKETPLACE_API_REF || 'master' }}
+  VIRIDA_MARKETPLACE_API_REF: ${{ secrets.VIRIDA_MARKETPLACE_API_REF || 'main' }}
   VIRIDA_MARKETPLACE_APP_REF: ${{ secrets.VIRIDA_MARKETPLACE_APP_REF || 'main' }}
   VIRIDA_EVE_REF: ${{ secrets.VIRIDA_EVE_REF || 'main' }}
-  # Keep CI non-blocking by default; set secret to 'false' to enforce immutable refs on main.
-  ALLOW_MOVING_EXTERNAL_REFS: ${{ secrets.ALLOW_MOVING_EXTERNAL_REFS || 'true' }}
+  # Immutable external refs are enforced by default on main.
+  ALLOW_MOVING_EXTERNAL_REFS: ${{ secrets.ALLOW_MOVING_EXTERNAL_REFS || 'false' }}
   SONAR_SCANNER_VERSION: '8.0.1.6346'
   SONAR_SCANNER_DIR: '/tmp/sonar-scanner'
 
@@ -103,18 +103,16 @@ jobs:
         REPO_URL="https://x-access-token:${GH_TOKEN_MARKETPLACE}@github.com/Virida-ghouse/Virida_marketplace_api.git"
         TARGET_DIR="Virida_marketplace_api"
         if [ -z "${REQUESTED_REF:-}" ]; then
-          REQUESTED_REF="master"
+          REQUESTED_REF="main"
         fi
         RESOLVED_REF="${REQUESTED_REF}"
         if ! git ls-remote --exit-code --heads "${REPO_URL}" "${REQUESTED_REF}" >/dev/null 2>&1 \
           && ! git ls-remote --exit-code --tags "${REPO_URL}" "${REQUESTED_REF}" >/dev/null 2>&1; then
-          echo "::warning::Requested ref '${REQUESTED_REF}' not found on Virida_marketplace_api. Trying fallback branches."
-          if git ls-remote --exit-code --heads "${REPO_URL}" "master" >/dev/null 2>&1; then
-            RESOLVED_REF="master"
-          elif git ls-remote --exit-code --heads "${REPO_URL}" "main" >/dev/null 2>&1; then
+          echo "::warning::Requested ref '${REQUESTED_REF}' not found on Virida_marketplace_api. Trying fallback branch main."
+          if git ls-remote --exit-code --heads "${REPO_URL}" "main" >/dev/null 2>&1; then
             RESOLVED_REF="main"
           else
-            echo "::error::No usable ref found (requested='${REQUESTED_REF}', fallback='master|main')."
+            echo "::error::No usable ref found (requested='${REQUESTED_REF}', fallback='main')."
             exit 1
           fi
         fi
@@ -386,6 +384,8 @@ jobs:
           -Dsonar.projectKey=Virida_marketplace_api
           -Dsonar.projectName=Virida_marketplace_api
           -Dsonar.sources=.
+          -Dsonar.tests=src,tests
+          -Dsonar.test.inclusions='**/*.test.ts,**/*.test.tsx,**/*.spec.ts,**/*.spec.tsx,tests/**/*'
           -Dsonar.exclusions='node_modules/**,dist/**,build/**,coverage/**,**/*.min.js,**/*.bundle.js,**/*.generated.*'
           -Dsonar.javascript.node.maxspace=1024
           -Dsonar.scm.disabled=true
@@ -477,12 +477,41 @@ jobs:
         SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
       run: |
         set -euo pipefail
+        SONAR_TOKEN_CLEAN="$(printf '%s' "${SONAR_TOKEN}" | tr -d '\r\n')"
         SONAR_HOST_URL_CLEAN="$(printf '%s' "${SONAR_HOST_URL}" | tr -d '\r\n' | sed -E 's#(https?://[^/]+).*#\1#')"
+        if [ -z "${SONAR_TOKEN_CLEAN}" ]; then
+          echo "::error::SONAR_TOKEN empty after trim"
+          exit 1
+        fi
         check_gate() {
           local key="$1"
           local resp
           local status
-          resp="$(curl -fsS -u "${SONAR_TOKEN}:" "${SONAR_HOST_URL_CLEAN}/api/qualitygates/project_status?projectKey=${key}")"
+          local endpoint="${SONAR_HOST_URL_CLEAN}/api/qualitygates/project_status?projectKey=${key}"
+          local body_file
+          local http_code
+          body_file="$(mktemp)"
+          http_code="$(curl -sS -o "${body_file}" -w "%{http_code}" \
+            -H "Authorization: Bearer ${SONAR_TOKEN_CLEAN}" \
+            "${endpoint}")"
+          if [ "${http_code}" = "401" ] || [ "${http_code}" = "403" ]; then
+            http_code="$(curl -sS -o "${body_file}" -w "%{http_code}" \
+              -u "${SONAR_TOKEN_CLEAN}:" \
+              "${endpoint}")"
+          fi
+          if [ "${http_code}" != "200" ]; then
+            echo "::error::Unable to read Sonar quality gate for ${key} (HTTP ${http_code})."
+            if [ "${http_code}" = "401" ] || [ "${http_code}" = "403" ]; then
+              echo "::error::SONAR_TOKEN is valid for scan upload only, or lacks read access on '${key}'."
+              echo "::error::Required Sonar permissions: Execute Analysis + Browse (or project admin) on each project."
+            fi
+            echo "[DEBUG] endpoint=${endpoint}"
+            sed -n '1,120p' "${body_file}"
+            rm -f "${body_file}"
+            exit 1
+          fi
+          resp="$(cat "${body_file}")"
+          rm -f "${body_file}"
           status="$(echo "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin)["projectStatus"]["status"])')"
           echo "[INFO] ${key} quality gate: ${status}"
           if [ "${status}" != "OK" ]; then
