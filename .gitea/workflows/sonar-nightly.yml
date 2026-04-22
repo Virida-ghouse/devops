@@ -166,9 +166,12 @@ jobs:
         npm ci --ignore-scripts
         COVERAGE_SCRIPT="$(node -e "const s=require('./package.json').scripts||{}; const c=['test:coverage','coverage','test:ci']; console.log(c.find(k=>s[k])||'')")"
         HAS_TEST_SCRIPT="$(node -e "const s=require('./package.json').scripts||{}; process.stdout.write(s.test ? 'yes' : 'no')")"
+        TEST_SCRIPT_VALUE="$(node -e "const s=require('./package.json').scripts||{}; process.stdout.write(String(s.test||''))")"
         if [ -n "${COVERAGE_SCRIPT}" ]; then
           echo "[INFO] Running ${COVERAGE_SCRIPT} for Virida_marketplace_api"
           npm run -s "${COVERAGE_SCRIPT}"
+        elif printf '%s' "${TEST_SCRIPT_VALUE}" | grep -qi 'no test specified'; then
+          echo "::warning::Placeholder npm test script detected in Virida_marketplace_api; skipping tests"
         elif [ "${HAS_TEST_SCRIPT}" = "yes" ]; then
           echo "[INFO] Running npm test for Virida_marketplace_api"
           npm test -- --ci --runInBand --coverage
@@ -186,9 +189,12 @@ jobs:
         npm ci --ignore-scripts
         COVERAGE_SCRIPT="$(node -e "const s=require('./package.json').scripts||{}; const c=['test:coverage','coverage','test:ci']; console.log(c.find(k=>s[k])||'')")"
         HAS_TEST_SCRIPT="$(node -e "const s=require('./package.json').scripts||{}; process.stdout.write(s.test ? 'yes' : 'no')")"
+        TEST_SCRIPT_VALUE="$(node -e "const s=require('./package.json').scripts||{}; process.stdout.write(String(s.test||''))")"
         if [ -n "${COVERAGE_SCRIPT}" ]; then
           echo "[INFO] Running ${COVERAGE_SCRIPT} for Virida_marketplace_app"
           npm run -s "${COVERAGE_SCRIPT}"
+        elif printf '%s' "${TEST_SCRIPT_VALUE}" | grep -qi 'no test specified'; then
+          echo "::warning::Placeholder npm test script detected in Virida_marketplace_app; skipping tests"
         elif [ "${HAS_TEST_SCRIPT}" = "yes" ]; then
           echo "[INFO] Running npm test for Virida_marketplace_app"
           npm test -- --ci --runInBand --coverage
@@ -214,9 +220,12 @@ jobs:
         fi
         COVERAGE_SCRIPT="$(node -e "const s=require('./package.json').scripts||{}; const c=['test:coverage','coverage','test:ci']; console.log(c.find(k=>s[k])||'')")"
         HAS_TEST_SCRIPT="$(node -e "const s=require('./package.json').scripts||{}; process.stdout.write(s.test ? 'yes' : 'no')")"
+        TEST_SCRIPT_VALUE="$(node -e "const s=require('./package.json').scripts||{}; process.stdout.write(String(s.test||''))")"
         if [ -n "${COVERAGE_SCRIPT}" ]; then
           echo "[INFO] Running ${COVERAGE_SCRIPT} for virida-eve"
           npm run -s "${COVERAGE_SCRIPT}"
+        elif printf '%s' "${TEST_SCRIPT_VALUE}" | grep -qi 'no test specified'; then
+          echo "::warning::Placeholder npm test script detected in virida-eve; skipping tests"
         elif [ "${HAS_TEST_SCRIPT}" = "yes" ]; then
           echo "[INFO] Running npm test for virida-eve"
           npm test -- --ci --runInBand --coverage
