@@ -341,20 +341,28 @@ jobs:
           echo "::error::SONAR_TOKEN empty after trim"
           exit 1
         fi
-        "${SONAR_SCANNER_DIR}/bin/sonar-scanner" \
-          -Dsonar.host.url="${SONAR_HOST_URL_CLEAN}" \
-          -Dsonar.token="${SONAR_TOKEN_CLEAN}" \
-          -Dsonar.projectKey=virida_app \
-          -Dsonar.projectName=virida_app \
-          -Dsonar.sources=src/services/api,src/store,src/hooks/useSensorData.ts,src/contexts \
-          -Dsonar.inclusions='src/services/api/apiConfig.ts,src/services/api/authService.ts,src/services/api/chatService.ts,src/services/api/contactService.ts,src/services/api/plantService.ts,src/services/api/sensorService.ts,src/store/sensorStore.ts,src/store/useViridaStore.ts,src/hooks/useSensorData.ts,src/contexts/AuthContext.tsx,src/contexts/ChatHistoryContext.tsx' \
-          -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
-          -Dsonar.exclusions='dist/**,public/**,node_modules/**,coverage/**,**/*.d.ts,**/*.min.js,**/*.bundle.js,**/*.generated.*,src/**/*.test.ts,src/**/*.test.tsx,src/**/*.integration.test.tsx,src/hooks/useThree.ts,src/hooks/useViridaSensors.ts,src/services/api/index.ts,src/services/api/README.md,src/contexts/RGPDContext.tsx,src/contexts/ThemeContext.tsx' \
-          -Dsonar.coverage.exclusions='src/hooks/useThree.ts,src/hooks/useViridaSensors.ts,src/services/api/index.ts,src/contexts/RGPDContext.tsx,src/contexts/ThemeContext.tsx' \
-          -Dsonar.javascript.node.maxspace=1024 \
-          -Dsonar.scm.disabled=true \
-          -Dsonar.sourceEncoding=UTF-8 \
+        SCAN_SOURCES="."
+        if [ -d "src" ]; then
+          SCAN_SOURCES="src"
+        fi
+        echo "[INFO] virida_app sonar.sources=${SCAN_SOURCES}"
+        SCAN_ARGS=(
+          -Dsonar.host.url="${SONAR_HOST_URL_CLEAN}"
+          -Dsonar.token="${SONAR_TOKEN_CLEAN}"
+          -Dsonar.projectKey=virida_app
+          -Dsonar.projectName=virida_app
+          -Dsonar.sources="${SCAN_SOURCES}"
+          -Dsonar.exclusions='dist/**,public/**,node_modules/**,coverage/**,**/*.d.ts,**/*.min.js,**/*.bundle.js,**/*.generated.*,src/**/*.test.ts,src/**/*.test.tsx,src/**/*.integration.test.tsx,src/hooks/useThree.ts,src/hooks/useViridaSensors.ts,src/services/api/index.ts,src/services/api/README.md,src/contexts/RGPDContext.tsx,src/contexts/ThemeContext.tsx'
+          -Dsonar.coverage.exclusions='src/hooks/useThree.ts,src/hooks/useViridaSensors.ts,src/services/api/index.ts,src/contexts/RGPDContext.tsx,src/contexts/ThemeContext.tsx'
+          -Dsonar.javascript.node.maxspace=1024
+          -Dsonar.scm.disabled=true
+          -Dsonar.sourceEncoding=UTF-8
           -Dsonar.scanner.skipJreProvisioning=true
+        )
+        if [ -f coverage/lcov.info ]; then
+          SCAN_ARGS+=(-Dsonar.javascript.lcov.reportPaths=coverage/lcov.info)
+        fi
+        "${SONAR_SCANNER_DIR}/bin/sonar-scanner" "${SCAN_ARGS[@]}"
 
     - name: Sonar scan Virida_marketplace_api
       working-directory: Virida_marketplace_api
