@@ -1,0 +1,12 @@
+# Trivy ignore file for VIRIDA CI/CD
+# Ignore Dockerfile best-practice checks that are not security-critical
+
+# DS-0029: Missing --no-install-recommends in apt-get install
+# These are infrastructure Dockerfiles (Gitea runner, SonarQube)
+# Optimizing image size is less critical than security vulnerabilities
+DS-0029
+
+# DS-0002: Containers running as root
+# Infrastructure containers that require root access for setup
+# These are build/CI containers, not production application containers
+DS-0002
