@@ -8,7 +8,7 @@ name: SonarQube Analysis (auto)
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, master ]
   schedule:
     - cron: '0 3 * * *'
   workflow_dispatch:
@@ -162,7 +162,7 @@ jobs:
         NODE_OPTIONS: --no-warnings
       run: |
         set -euo pipefail
-        npm ci
+        npm ci --include=dev
         export DATABASE_URL="postgresql://user:pass@localhost:5432/virida?schema=public"
         npx prisma generate
         npm test -- --ci --runInBand --coverage
@@ -174,7 +174,7 @@ jobs:
         CI: 'true'
       run: |
         set -euo pipefail
-        npm ci --ignore-scripts
+        npm ci --include=dev --ignore-scripts
         COVERAGE_SCRIPT="$(node -e "const s=require('./package.json').scripts||{}; const c=['test:coverage','coverage','test:ci']; console.log(c.find(k=>s[k])||'')")"
         HAS_TEST_SCRIPT="$(node -e "const s=require('./package.json').scripts||{}; process.stdout.write(s.test ? 'yes' : 'no')")"
         TEST_SCRIPT_VALUE="$(node -e "const s=require('./package.json').scripts||{}; process.stdout.write(String(s.test||''))")"
@@ -192,6 +192,20 @@ jobs:
           echo "::warning::No test script found in virida_app/package.json"
         fi
 
+    - name: Verify virida_app coverage report (blocking)
+      working-directory: virida_app
+      run: |
+        set -euo pipefail
+        if [ ! -f coverage/lcov.info ]; then
+          echo "::error::Missing coverage/lcov.info for virida_app. Refusing Sonar scan with implicit 0% coverage."
+          exit 1
+        fi
+        if [ ! -s coverage/lcov.info ]; then
+          echo "::error::coverage/lcov.info exists but is empty for virida_app."
+          exit 1
+        fi
+        echo "[OK] coverage/lcov.info present for virida_app ($(wc -l < coverage/lcov.info) lines)"
+
     - name: Install Virida_marketplace_api deps + tests
       working-directory: Virida_marketplace_api
       env:
@@ -199,7 +213,7 @@ jobs:
         CI: 'true'
       run: |
         set -euo pipefail
-        npm ci --ignore-scripts
+        npm ci --include=dev --ignore-scripts
         COVERAGE_SCRIPT="$(node -e "const s=require('./package.json').scripts||{}; const c=['test:coverage','coverage','test:ci']; console.log(c.find(k=>s[k])||'')")"
         HAS_TEST_SCRIPT="$(node -e "const s=require('./package.json').scripts||{}; process.stdout.write(s.test ? 'yes' : 'no')")"
         TEST_SCRIPT_VALUE="$(node -e "const s=require('./package.json').scripts||{}; process.stdout.write(String(s.test||''))")"
@@ -222,7 +236,7 @@ jobs:
         CI: 'true'
       run: |
         set -euo pipefail
-        npm ci --ignore-scripts
+        npm ci --include=dev --ignore-scripts
         COVERAGE_SCRIPT="$(node -e "const s=require('./package.json').scripts||{}; const c=['test:coverage','coverage','test:ci']; console.log(c.find(k=>s[k])||'')")"
         HAS_TEST_SCRIPT="$(node -e "const s=require('./package.json').scripts||{}; process.stdout.write(s.test ? 'yes' : 'no')")"
         TEST_SCRIPT_VALUE="$(node -e "const s=require('./package.json').scripts||{}; process.stdout.write(String(s.test||''))")"
@@ -250,7 +264,7 @@ jobs:
           exit 0
         fi
         if [ -f package-lock.json ]; then
-          npm ci --ignore-scripts
+          npm ci --include=dev --ignore-scripts
         else
           npm install --ignore-scripts
         fi
@@ -352,14 +366,12 @@ jobs:
           -Dsonar.sources="${SCAN_SOURCES}"
           -Dsonar.exclusions='dist/**,public/**,node_modules/**,coverage/**,**/*.d.ts,**/*.min.js,**/*.bundle.js,**/*.generated.*,src/**/*.test.ts,src/**/*.test.tsx,src/**/*.integration.test.tsx,src/hooks/useThree.ts,src/hooks/useViridaSensors.ts,src/services/api/index.ts,src/services/api/README.md,src/contexts/RGPDContext.tsx,src/contexts/ThemeContext.tsx'
           -Dsonar.coverage.exclusions='src/hooks/useThree.ts,src/hooks/useViridaSensors.ts,src/services/api/index.ts,src/contexts/RGPDContext.tsx,src/contexts/ThemeContext.tsx'
+          -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
           -Dsonar.javascript.node.maxspace=1024
           -Dsonar.scm.disabled=true
           -Dsonar.sourceEncoding=UTF-8
           -Dsonar.scanner.skipJreProvisioning=true
         )
-        if [ -f coverage/lcov.info ]; then
-          SCAN_ARGS+=(-Dsonar.javascript.lcov.reportPaths=coverage/lcov.info)
-        fi
         "${SONAR_SCANNER_DIR}/bin/sonar-scanner" "${SCAN_ARGS[@]}"
 
     - name: Sonar scan Virida_marketplace_api
@@ -383,10 +395,10 @@ jobs:
           -Dsonar.token="${SONAR_TOKEN_CLEAN}"
           -Dsonar.projectKey=Virida_marketplace_api
           -Dsonar.projectName=Virida_marketplace_api
-          -Dsonar.sources=.
-          -Dsonar.tests=src,tests
+          -Dsonar.sources=src
+          -Dsonar.tests=.
           -Dsonar.test.inclusions='**/*.test.ts,**/*.test.tsx,**/*.spec.ts,**/*.spec.tsx,tests/**/*'
-          -Dsonar.exclusions='node_modules/**,dist/**,build/**,coverage/**,**/*.min.js,**/*.bundle.js,**/*.generated.*'
+          -Dsonar.exclusions='node_modules/**,dist/**,build/**,coverage/**,**/*.min.js,**/*.bundle.js,**/*.generated.*,**/*.test.ts,**/*.test.tsx,**/*.spec.ts,**/*.spec.tsx,tests/**'
           -Dsonar.javascript.node.maxspace=1024
           -Dsonar.scm.disabled=true
           -Dsonar.sourceEncoding=UTF-8
