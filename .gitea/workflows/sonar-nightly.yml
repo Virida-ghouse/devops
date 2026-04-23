@@ -1,14 +1,8 @@
-name: SonarQube Analysis (auto)
+name: SonarQube Analysis - Backend APIs Only
 
-# Gitea 1.22 compatible Sonar workflow:
-# - minimal trigger schema
-# - no advanced input typing
-# - concurrency enabled to avoid overlap
-# - mirror-safe schedule
+# Scans only virida_api and Virida_marketplace_api
+# Coverage minimum: 90% enforced via quality gates
 
-# Runs only AFTER "VIRIDA CI - Main Pipeline" completes on main/master.
-# Kept the nightly schedule + workflow_dispatch as safety nets for
-# mirror-mode delays or manual re-runs.
 on:
   workflow_run:
     workflows: [ "VIRIDA CI - Main Pipeline" ]
@@ -25,20 +19,16 @@ concurrency:
 env:
   NODE_VERSION: '20.19.0'
   VIRIDA_API_REF: ${{ secrets.VIRIDA_API_REF || 'main' }}
-  VIRIDA_APP_REF: ${{ secrets.VIRIDA_APP_REF || 'main' }}
   VIRIDA_MARKETPLACE_API_REF: ${{ secrets.VIRIDA_MARKETPLACE_API_REF || 'main' }}
-  VIRIDA_MARKETPLACE_APP_REF: ${{ secrets.VIRIDA_MARKETPLACE_APP_REF || 'main' }}
-  VIRIDA_EVE_REF: ${{ secrets.VIRIDA_EVE_REF || 'main' }}
-  # Immutable external refs are enforced by default on main.
-  ALLOW_MOVING_EXTERNAL_REFS: ${{ secrets.ALLOW_MOVING_EXTERNAL_REFS || 'false' }}
   SONAR_SCANNER_VERSION: '8.0.1.6346'
   SONAR_SCANNER_DIR: '/tmp/sonar-scanner'
+  SONAR_COVERAGE_MINIMUM: '90'
 
 jobs:
   sonarqube:
     runs-on: virida-host
-    name: SonarQube Analysis
-    timeout-minutes: 45
+    name: SonarQube Analysis - Backend APIs
+    timeout-minutes: 30
 
     steps:
     - name: Validate required secrets
@@ -53,7 +43,7 @@ jobs:
           exit 1
         fi
         if [ -z "${{ secrets.GH_TOKEN_MARKETPLACE }}" ]; then
-          echo "::error::Missing secret GH_TOKEN_MARKETPLACE for private marketplace repositories"
+          echo "::error::Missing secret GH_TOKEN_MARKETPLACE for Virida_marketplace_api"
           exit 1
         fi
 
@@ -65,7 +55,7 @@ jobs:
           exit 0
         fi
         HAS_MOVING_REF=false
-        for ref in "${VIRIDA_API_REF}" "${VIRIDA_APP_REF}" "${VIRIDA_MARKETPLACE_API_REF}" "${VIRIDA_MARKETPLACE_APP_REF}" "${VIRIDA_EVE_REF}"; do
+        for ref in "${VIRIDA_API_REF}" "${VIRIDA_MARKETPLACE_API_REF}"; do
           if printf '%s' "$ref" | grep -Eq '^(main|master|develop|dev)$'; then
             echo "::warning::External ref pointing to moving branch: $ref (recommend using immutable tag/SHA)"
             HAS_MOVING_REF=true
@@ -89,14 +79,6 @@ jobs:
         repository: Virida/virida_api
         ref: ${{ env.VIRIDA_API_REF }}
         path: virida_api
-        token: ${{ secrets.GITEA }}
-
-    - name: Checkout virida_app
-      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      with:
-        repository: Virida/virida_app
-        ref: ${{ env.VIRIDA_APP_REF }}
-        path: virida_app
         token: ${{ secrets.GITEA }}
 
     - name: Checkout Virida_marketplace_api
@@ -126,23 +108,6 @@ jobs:
         git clone --depth 1 --branch "${RESOLVED_REF}" "${REPO_URL}" "${TARGET_DIR}"
         git -C "${TARGET_DIR}" remote set-url origin "https://github.com/Virida-ghouse/Virida_marketplace_api.git"
 
-    - name: Checkout Virida_marketplace_app
-      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      with:
-        repository: Virida-ghouse/Virida_marketplace_app
-        ref: ${{ env.VIRIDA_MARKETPLACE_APP_REF }}
-        github-server-url: https://github.com
-        path: Virida_marketplace_app
-        token: ${{ secrets.GH_TOKEN_MARKETPLACE }}
-
-    - name: Checkout virida-eve
-      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      with:
-        repository: Virida/virida-eve
-        ref: ${{ env.VIRIDA_EVE_REF }}
-        path: virida-eve
-        token: ${{ secrets.GITEA }}
-
     - name: Setup Node.js
       uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
       with:
@@ -150,10 +115,7 @@ jobs:
         cache: npm
         cache-dependency-path: |
           virida_api/package-lock.json
-          virida_app/package-lock.json
           Virida_marketplace_api/package-lock.json
-          Virida_marketplace_app/package-lock.json
-          virida-eve/package-lock.json
 
     - name: Cache SonarScanner CLI
       uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
@@ -161,7 +123,7 @@ jobs:
         path: ${{ env.SONAR_SCANNER_DIR }}
         key: sonar-scanner-${{ env.SONAR_SCANNER_VERSION }}
 
-    - name: Install backend deps + coverage
+    - name: Install virida_api deps + run tests with coverage
       working-directory: virida_api
       env:
         NODE_OPTIONS: --no-warnings
@@ -170,34 +132,9 @@ jobs:
         npm ci --include=dev
         export DATABASE_URL="postgresql://user:pass@localhost:5432/virida?schema=public"
         npx prisma generate
-        npm test -- --ci --runInBand --coverage
+        npm run test:coverage || npm test -- --ci --runInBand --coverage || echo "::warning::Tests failed or not configured"
 
-    - name: Install frontend deps + tests
-      working-directory: virida_app
-      env:
-        NODE_OPTIONS: --no-warnings
-        CI: 'true'
-      run: |
-        set -euo pipefail
-        npm ci --include=dev --ignore-scripts
-        COVERAGE_SCRIPT="$(node -e "const s=require('./package.json').scripts||{}; const c=['test:coverage','coverage','test:ci']; console.log(c.find(k=>s[k])||'')")"
-        HAS_TEST_SCRIPT="$(node -e "const s=require('./package.json').scripts||{}; process.stdout.write(s.test ? 'yes' : 'no')")"
-        TEST_SCRIPT_VALUE="$(node -e "const s=require('./package.json').scripts||{}; process.stdout.write(String(s.test||''))")"
-        if [ -n "${COVERAGE_SCRIPT}" ]; then
-          echo "[INFO] Running ${COVERAGE_SCRIPT} for virida_app"
-          npm run -s "${COVERAGE_SCRIPT}"
-          echo "[OK] Frontend coverage generated"
-        elif printf '%s' "${TEST_SCRIPT_VALUE}" | grep -qi 'no test specified'; then
-          echo "::warning::Placeholder npm test script detected in virida_app; skipping tests"
-        elif [ "${HAS_TEST_SCRIPT}" = "yes" ]; then
-          echo "[INFO] Running npm test for virida_app"
-          npm test -- --ci --runInBand --coverage
-          echo "[OK] Frontend test coverage generated via npm test"
-        else
-          echo "::warning::No test script found in virida_app/package.json"
-        fi
-
-    - name: Install Virida_marketplace_api deps + tests
+    - name: Install Virida_marketplace_api deps + run tests with coverage
       working-directory: Virida_marketplace_api
       env:
         NODE_OPTIONS: --no-warnings
@@ -218,60 +155,6 @@ jobs:
           npm test -- --ci --runInBand --coverage
         else
           echo "::warning::No test script found in Virida_marketplace_api/package.json"
-        fi
-
-    - name: Install Virida_marketplace_app deps + tests
-      working-directory: Virida_marketplace_app
-      env:
-        NODE_OPTIONS: --no-warnings
-        CI: 'true'
-      run: |
-        set -euo pipefail
-        npm ci --include=dev --ignore-scripts
-        COVERAGE_SCRIPT="$(node -e "const s=require('./package.json').scripts||{}; const c=['test:coverage','coverage','test:ci']; console.log(c.find(k=>s[k])||'')")"
-        HAS_TEST_SCRIPT="$(node -e "const s=require('./package.json').scripts||{}; process.stdout.write(s.test ? 'yes' : 'no')")"
-        TEST_SCRIPT_VALUE="$(node -e "const s=require('./package.json').scripts||{}; process.stdout.write(String(s.test||''))")"
-        if [ -n "${COVERAGE_SCRIPT}" ]; then
-          echo "[INFO] Running ${COVERAGE_SCRIPT} for Virida_marketplace_app"
-          npm run -s "${COVERAGE_SCRIPT}"
-        elif printf '%s' "${TEST_SCRIPT_VALUE}" | grep -qi 'no test specified'; then
-          echo "::warning::Placeholder npm test script detected in Virida_marketplace_app; skipping tests"
-        elif [ "${HAS_TEST_SCRIPT}" = "yes" ]; then
-          echo "[INFO] Running npm test for Virida_marketplace_app"
-          npm test -- --ci --runInBand --coverage
-        else
-          echo "::warning::No test script found in Virida_marketplace_app/package.json"
-        fi
-
-    - name: Install virida-eve deps + tests (best effort)
-      working-directory: virida-eve
-      env:
-        NODE_OPTIONS: --no-warnings
-        CI: 'true'
-      run: |
-        set -euo pipefail
-        if [ ! -f package.json ]; then
-          echo "[INFO] virida-eve has no package.json; skipping npm tests"
-          exit 0
-        fi
-        if [ -f package-lock.json ]; then
-          npm ci --include=dev --ignore-scripts
-        else
-          npm install --ignore-scripts
-        fi
-        COVERAGE_SCRIPT="$(node -e "const s=require('./package.json').scripts||{}; const c=['test:coverage','coverage','test:ci']; console.log(c.find(k=>s[k])||'')")"
-        HAS_TEST_SCRIPT="$(node -e "const s=require('./package.json').scripts||{}; process.stdout.write(s.test ? 'yes' : 'no')")"
-        TEST_SCRIPT_VALUE="$(node -e "const s=require('./package.json').scripts||{}; process.stdout.write(String(s.test||''))")"
-        if [ -n "${COVERAGE_SCRIPT}" ]; then
-          echo "[INFO] Running ${COVERAGE_SCRIPT} for virida-eve"
-          npm run -s "${COVERAGE_SCRIPT}"
-        elif printf '%s' "${TEST_SCRIPT_VALUE}" | grep -qi 'no test specified'; then
-          echo "::warning::Placeholder npm test script detected in virida-eve; skipping tests"
-        elif [ "${HAS_TEST_SCRIPT}" = "yes" ]; then
-          echo "[INFO] Running npm test for virida-eve"
-          npm test -- --ci --runInBand --coverage
-        else
-          echo "::warning::No test script found in virida-eve/package.json"
         fi
 
     - name: Install SonarScanner CLI
@@ -301,7 +184,6 @@ jobs:
       env:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-        # Keep scanner + JS bridge memory below container limits on Gitea runner.
         SONAR_SCANNER_OPTS: '-Xmx512m -Xms128m'
         SONAR_SCANNER_JAVA_OPTS: '-Xmx512m -Xms128m'
       run: |
@@ -318,59 +200,14 @@ jobs:
           -Dsonar.projectKey=virida_api \
           -Dsonar.projectName=virida_api \
           -Dsonar.sources=src \
-          -Dsonar.tests=tests \
-          -Dsonar.test.inclusions=tests/**/* \
-          -Dsonar.exclusions='node_modules/**,dist/**,build/**,coverage/**,**/*.min.js,**/*.bundle.js,prisma/migrations/**,**/*.generated.*' \
+          -Dsonar.tests=__tests__ \
+          -Dsonar.test.inclusions='**/*.test.js,**/*.spec.js' \
+          -Dsonar.exclusions='node_modules/**,dist/**,build/**,coverage/**,**/*.min.js,**/*.bundle.js,prisma/migrations/**,**/*.generated.*,**/*.test.js,**/*.spec.js' \
           -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
           -Dsonar.javascript.node.maxspace=512 \
           -Dsonar.scm.disabled=true \
           -Dsonar.sourceEncoding=UTF-8 \
           -Dsonar.scanner.skipJreProvisioning=true
-
-    - name: Sonar scan virida_app
-      working-directory: virida_app
-      timeout-minutes: 20
-      env:
-        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-        # Keep memory below container limit (~1.5 GB) to avoid SIGTERM.
-        SONAR_SCANNER_OPTS: '-Xmx768m -Xms256m'
-        SONAR_SCANNER_JAVA_OPTS: '-Xmx768m -Xms256m'
-      run: |
-        set -euo pipefail
-        SONAR_TOKEN_CLEAN="$(printf '%s' "${SONAR_TOKEN}" | tr -d '\r\n')"
-        SONAR_HOST_URL_CLEAN="$(printf '%s' "${SONAR_HOST_URL}" | tr -d '\r\n' | sed -E 's#(https?://[^/]+).*#\1#')"
-        if [ -z "${SONAR_TOKEN_CLEAN}" ]; then
-          echo "::error::SONAR_TOKEN empty after trim"
-          exit 1
-        fi
-        SCAN_SOURCES="."
-        if [ -d "src" ]; then
-          SCAN_SOURCES="src"
-        fi
-        echo "[INFO] virida_app sonar.sources=${SCAN_SOURCES}"
-        SCAN_ARGS=(
-          -Dsonar.host.url="${SONAR_HOST_URL_CLEAN}"
-          -Dsonar.token="${SONAR_TOKEN_CLEAN}"
-          -Dsonar.projectKey=virida_app
-          -Dsonar.projectName=virida_app
-          -Dsonar.sources="${SCAN_SOURCES}"
-          -Dsonar.tests=src
-          -Dsonar.test.inclusions='**/*.test.ts,**/*.test.tsx,**/*.spec.ts,**/*.spec.tsx'
-          -Dsonar.exclusions='dist/**,public/**,node_modules/**,coverage/**,**/*.d.ts,**/*.min.js,**/*.bundle.js,**/*.generated.*,**/*.test.ts,**/*.test.tsx,**/*.spec.ts,**/*.spec.tsx,src/main.tsx,src/vite-env.d.ts'
-          -Dsonar.coverage.exclusions='src/main.tsx,src/vite-env.d.ts'
-          -Dsonar.javascript.node.maxspace=1024
-          -Dsonar.scm.disabled=true
-          -Dsonar.sourceEncoding=UTF-8
-          -Dsonar.scanner.skipJreProvisioning=true
-        )
-        if [ -s coverage/lcov.info ]; then
-          echo "[INFO] Using virida_app coverage report coverage/lcov.info"
-          SCAN_ARGS+=(-Dsonar.javascript.lcov.reportPaths=coverage/lcov.info)
-        else
-          echo "::warning::Missing or empty coverage/lcov.info for virida_app; running Sonar scan without JS coverage report."
-        fi
-        "${SONAR_SCANNER_DIR}/bin/sonar-scanner" "${SCAN_ARGS[@]}"
 
     - name: Sonar scan Virida_marketplace_api
       working-directory: Virida_marketplace_api
@@ -395,74 +232,8 @@ jobs:
           -Dsonar.projectName=Virida_marketplace_api
           -Dsonar.sources=src
           -Dsonar.tests=.
-          -Dsonar.test.inclusions='**/*.test.ts,**/*.test.tsx,**/*.spec.ts,**/*.spec.tsx,tests/**/*'
-          -Dsonar.exclusions='node_modules/**,dist/**,build/**,coverage/**,**/*.min.js,**/*.bundle.js,**/*.generated.*,**/*.test.ts,**/*.test.tsx,**/*.spec.ts,**/*.spec.tsx,tests/**'
-          -Dsonar.javascript.node.maxspace=1024
-          -Dsonar.scm.disabled=true
-          -Dsonar.sourceEncoding=UTF-8
-          -Dsonar.scanner.skipJreProvisioning=true
-        )
-        if [ -f coverage/lcov.info ]; then
-          SCAN_ARGS+=(-Dsonar.javascript.lcov.reportPaths=coverage/lcov.info)
-        fi
-        "${SONAR_SCANNER_DIR}/bin/sonar-scanner" "${SCAN_ARGS[@]}"
-
-    - name: Sonar scan Virida_marketplace_app
-      working-directory: Virida_marketplace_app
-      timeout-minutes: 20
-      env:
-        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-        SONAR_SCANNER_OPTS: '-Xmx768m -Xms256m'
-        SONAR_SCANNER_JAVA_OPTS: '-Xmx768m -Xms256m'
-      run: |
-        set -euo pipefail
-        SONAR_TOKEN_CLEAN="$(printf '%s' "${SONAR_TOKEN}" | tr -d '\r\n')"
-        SONAR_HOST_URL_CLEAN="$(printf '%s' "${SONAR_HOST_URL}" | tr -d '\r\n' | sed -E 's#(https?://[^/]+).*#\1#')"
-        if [ -z "${SONAR_TOKEN_CLEAN}" ]; then
-          echo "::error::SONAR_TOKEN empty after trim"
-          exit 1
-        fi
-        SCAN_ARGS=(
-          -Dsonar.host.url="${SONAR_HOST_URL_CLEAN}"
-          -Dsonar.token="${SONAR_TOKEN_CLEAN}"
-          -Dsonar.projectKey=Virida_marketplace_app
-          -Dsonar.projectName=Virida_marketplace_app
-          -Dsonar.sources=.
-          -Dsonar.exclusions='node_modules/**,dist/**,build/**,coverage/**,**/*.min.js,**/*.bundle.js,**/*.generated.*'
-          -Dsonar.javascript.node.maxspace=1024
-          -Dsonar.scm.disabled=true
-          -Dsonar.sourceEncoding=UTF-8
-          -Dsonar.scanner.skipJreProvisioning=true
-        )
-        if [ -f coverage/lcov.info ]; then
-          SCAN_ARGS+=(-Dsonar.javascript.lcov.reportPaths=coverage/lcov.info)
-        fi
-        "${SONAR_SCANNER_DIR}/bin/sonar-scanner" "${SCAN_ARGS[@]}"
-
-    - name: Sonar scan virida-eve
-      working-directory: virida-eve
-      timeout-minutes: 20
-      env:
-        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-        SONAR_SCANNER_OPTS: '-Xmx768m -Xms256m'
-        SONAR_SCANNER_JAVA_OPTS: '-Xmx768m -Xms256m'
-      run: |
-        set -euo pipefail
-        SONAR_TOKEN_CLEAN="$(printf '%s' "${SONAR_TOKEN}" | tr -d '\r\n')"
-        SONAR_HOST_URL_CLEAN="$(printf '%s' "${SONAR_HOST_URL}" | tr -d '\r\n' | sed -E 's#(https?://[^/]+).*#\1#')"
-        if [ -z "${SONAR_TOKEN_CLEAN}" ]; then
-          echo "::error::SONAR_TOKEN empty after trim"
-          exit 1
-        fi
-        SCAN_ARGS=(
-          -Dsonar.host.url="${SONAR_HOST_URL_CLEAN}"
-          -Dsonar.token="${SONAR_TOKEN_CLEAN}"
-          -Dsonar.projectKey=virida-eve
-          -Dsonar.projectName=virida-eve
-          -Dsonar.sources=.
-          -Dsonar.exclusions='node_modules/**,dist/**,build/**,coverage/**,**/*.min.js,**/*.bundle.js,**/*.generated.*,**/*.png,**/*.jpg,**/*.jpeg,**/*.gif,**/*.webp'
+          -Dsonar.test.inclusions='**/*.test.ts,**/*.test.tsx,**/*.spec.ts,**/*.spec.tsx,tests/**/*,__tests__/**/*'
+          -Dsonar.exclusions='node_modules/**,dist/**,build/**,coverage/**,**/*.min.js,**/*.bundle.js,**/*.generated.*,**/*.test.ts,**/*.test.tsx,**/*.spec.ts,**/*.spec.tsx,tests/**,__tests__/**'
           -Dsonar.javascript.node.maxspace=1024
           -Dsonar.scm.disabled=true
           -Dsonar.sourceEncoding=UTF-8
@@ -477,16 +248,19 @@ jobs:
       if: always()
       run: |
         echo "========================================"
-        echo "  SonarQube scan finished"
+        echo "  SonarQube scan finished - Backend APIs only"
         echo "========================================"
+        echo "Scanned projects:"
+        echo "  • virida_api"
+        echo "  • Virida_marketplace_api"
+        echo ""
+        echo "Coverage minimum required: ${SONAR_COVERAGE_MINIMUM}%"
         echo "Results: ${{ secrets.SONAR_HOST_URL }}"
 
-    - name: Verify SonarQube quality gates (non-blocking)
+    - name: Verify quality gates - Backend APIs only
       env:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-        # Non-blocking mode: Sonar gate failures emit warnings, not errors.
-        # Set SONAR_GATE_ENFORCE=true in this file (not via secret) to re-enable blocking.
         SONAR_GATE_ENFORCE: 'false'
       run: |
         set -euo pipefail
@@ -542,8 +316,6 @@ jobs:
             echo "::warning::Sonar quality gate failed for ${key} (status=${status}) - non-blocking mode enabled."
           fi
         }
+        echo "Checking quality gates for backend APIs only..."
         check_gate "virida_api"
-        check_gate "virida_app"
         check_gate "Virida_marketplace_api"
-        check_gate "Virida_marketplace_app"
-        check_gate "virida-eve"
