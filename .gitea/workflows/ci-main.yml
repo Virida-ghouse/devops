@@ -385,6 +385,7 @@ jobs:
     if: always()
     env:
       STRICT_EXTERNAL_CHECKS: ${{ secrets.STRICT_EXTERNAL_CHECKS || 'true' }}
+      LEAFNODE_ESP_ENFORCE: ${{ secrets.LEAFNODE_ESP_ENFORCE || 'false' }}
 
     steps:
     - name: Checkout leafnode
@@ -450,7 +451,7 @@ jobs:
         fi
 
         if [ "$NEEDS_ESP" = "true" ] && [ "${LEAFNODE_FULL_BUILD:-}" != "true" ]; then
-          if [ "${LEAFNODE_ESP_ENFORCE}" = "true" ]; then
+          if [ "${LEAFNODE_ESP_ENFORCE:-false}" = "true" ]; then
             echo "::error::leafnode requires ESP toolchain and LEAFNODE_FULL_BUILD is not enabled."
             exit 1
           fi
