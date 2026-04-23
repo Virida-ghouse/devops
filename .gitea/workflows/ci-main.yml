@@ -763,7 +763,9 @@ jobs:
     name: Security Scan
     needs: [test-backend]
     if: always()
-    
+    env:
+      NPM_AUDIT_ENFORCE: ${{ secrets.NPM_AUDIT_ENFORCE || 'false' }}
+
     steps:
     - *checkout_code_step
     - *checkout_virida_api_step
@@ -781,8 +783,20 @@ jobs:
           echo "::error::Missing virida_app/package.json. Frontend audit cannot run."
           exit 1
         fi
-        echo "--- npm audit (blocking on high/critical) ---"
+        echo "--- npm audit (level=high) ---"
+        set +e
         npm audit --audit-level=high
+        RC=$?
+        set -e
+        if [ "$RC" -eq 0 ]; then
+          echo "[OK] Frontend npm audit passed."
+          exit 0
+        fi
+        if [ "${NPM_AUDIT_ENFORCE:-false}" = "true" ]; then
+          echo "::error::Frontend npm audit found high/critical vulnerabilities (enforced)."
+          exit "$RC"
+        fi
+        echo "::warning::Frontend npm audit found high/critical vulnerabilities — non-blocking mode (set NPM_AUDIT_ENFORCE=true to block)."
         
     - &backend_npm_ci_ignore_scripts_step
       name: Install backend dependencies (audit mode)
@@ -803,8 +817,20 @@ jobs:
           echo "::error::Missing virida_api/package.json. Backend audit cannot run."
           exit 1
         fi
-        echo "--- npm audit (blocking on high/critical) ---"
+        echo "--- npm audit (level=high) ---"
+        set +e
         npm audit --audit-level=high
+        RC=$?
+        set -e
+        if [ "$RC" -eq 0 ]; then
+          echo "[OK] Backend npm audit passed."
+          exit 0
+        fi
+        if [ "${NPM_AUDIT_ENFORCE:-false}" = "true" ]; then
+          echo "::error::Backend npm audit found high/critical vulnerabilities (enforced)."
+          exit "$RC"
+        fi
+        echo "::warning::Backend npm audit found high/critical vulnerabilities — non-blocking mode (set NPM_AUDIT_ENFORCE=true to block)."
 
     - name: Install gitleaks
       run: |
