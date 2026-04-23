@@ -863,9 +863,24 @@ jobs:
     - name: Install Trivy CLI
       run: |
         set -euo pipefail
-        TRIVY_VERSION="0.64.1"
-        URL="https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
-        curl -fsSL "${URL}" -o /tmp/trivy.tar.gz
+        TRIVY_VERSION="0.70.0"
+        ASSET="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+        BASE="https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}"
+        curl -fsSL "${BASE}/${ASSET}" -o /tmp/trivy.tar.gz
+        curl -fsSL "${BASE}/trivy_${TRIVY_VERSION}_checksums.txt" -o /tmp/trivy_checksums.txt
+        EXPECTED_SHA="$(awk -v a="${ASSET}" '$2==a{print $1}' /tmp/trivy_checksums.txt)"
+        ACTUAL_SHA="$(shasum -a 256 /tmp/trivy.tar.gz | awk '{print $1}')"
+        if [ -z "${EXPECTED_SHA}" ]; then
+          echo "::error::No SHA256 entry for ${ASSET} in checksums file"
+          cat /tmp/trivy_checksums.txt
+          exit 1
+        fi
+        if [ "${ACTUAL_SHA}" != "${EXPECTED_SHA}" ]; then
+          echo "::error::Trivy archive SHA256 mismatch"
+          echo "::error::expected=${EXPECTED_SHA}"
+          echo "::error::actual=${ACTUAL_SHA}"
+          exit 1
+        fi
         tar -xzf /tmp/trivy.tar.gz -C /tmp trivy
         chmod +x /tmp/trivy
         /tmp/trivy --version
