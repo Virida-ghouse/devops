@@ -833,12 +833,19 @@ jobs:
     - name: Install gitleaks
       run: |
         set -euo pipefail
-        URL="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
-        curl -fsSL "${URL}" -o /tmp/gitleaks.tar.gz
-        curl -fsSL "${URL}.sha256" -o /tmp/gitleaks.tar.gz.sha256
-        EXPECTED_SHA="$(awk '{print $1}' /tmp/gitleaks.tar.gz.sha256)"
+        ASSET="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+        BASE="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
+        curl -fsSL "${BASE}/${ASSET}" -o /tmp/gitleaks.tar.gz
+        # Gitleaks ships a single checksums file for all platforms, not a per-asset .sha256
+        curl -fsSL "${BASE}/gitleaks_${GITLEAKS_VERSION}_checksums.txt" -o /tmp/gitleaks_checksums.txt
+        EXPECTED_SHA="$(awk -v a="${ASSET}" '$2==a{print $1}' /tmp/gitleaks_checksums.txt)"
         ACTUAL_SHA="$(shasum -a 256 /tmp/gitleaks.tar.gz | awk '{print $1}')"
-        if [ -z "${EXPECTED_SHA}" ] || [ "${ACTUAL_SHA}" != "${EXPECTED_SHA}" ]; then
+        if [ -z "${EXPECTED_SHA}" ]; then
+          echo "::error::No SHA256 entry for ${ASSET} in checksums file"
+          cat /tmp/gitleaks_checksums.txt
+          exit 1
+        fi
+        if [ "${ACTUAL_SHA}" != "${EXPECTED_SHA}" ]; then
           echo "::error::gitleaks archive SHA256 mismatch"
           echo "::error::expected=${EXPECTED_SHA}"
           echo "::error::actual=${ACTUAL_SHA}"
