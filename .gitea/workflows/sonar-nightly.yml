@@ -6,15 +6,20 @@ name: SonarQube Analysis (auto)
 # - concurrency enabled to avoid overlap
 # - mirror-safe schedule
 
+# Runs only AFTER "VIRIDA CI - Main Pipeline" completes on main/master.
+# Kept the nightly schedule + workflow_dispatch as safety nets for
+# mirror-mode delays or manual re-runs.
 on:
-  push:
+  workflow_run:
+    workflows: [ "VIRIDA CI - Main Pipeline" ]
+    types: [ completed ]
     branches: [ main, master ]
   schedule:
     - cron: '0 3 * * *'
   workflow_dispatch:
 
 concurrency:
-  group: sonar-nightly-${{ github.ref }}
+  group: sonar-nightly-${{ github.event.workflow_run.head_branch || github.ref }}
   cancel-in-progress: true
 
 env:
