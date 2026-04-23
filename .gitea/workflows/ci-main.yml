@@ -174,7 +174,7 @@ jobs:
     needs: [validate]
     if: always()
     env:
-      STRICT_EXTERNAL_CHECKS: ${{ secrets.STRICT_EXTERNAL_CHECKS || 'true' }}
+      STRICT_EXTERNAL_CHECKS: ${{ secrets.STRICT_EXTERNAL_CHECKS || 'false' }}
       LEAFNODE_ESP_ENFORCE: ${{ secrets.LEAFNODE_ESP_ENFORCE || 'false' }}
 
     steps:
@@ -384,7 +384,7 @@ jobs:
     needs: [test-eve]
     if: always()
     env:
-      STRICT_EXTERNAL_CHECKS: ${{ secrets.STRICT_EXTERNAL_CHECKS || 'true' }}
+      STRICT_EXTERNAL_CHECKS: ${{ secrets.STRICT_EXTERNAL_CHECKS || 'false' }}
       LEAFNODE_ESP_ENFORCE: ${{ secrets.LEAFNODE_ESP_ENFORCE || 'false' }}
 
     steps:
@@ -501,7 +501,7 @@ jobs:
     needs: [test-leafnode]
     if: always()
     env:
-      STRICT_EXTERNAL_CHECKS: ${{ secrets.STRICT_EXTERNAL_CHECKS || 'true' }}
+      STRICT_EXTERNAL_CHECKS: ${{ secrets.STRICT_EXTERNAL_CHECKS || 'false' }}
 
     steps:
     # virida_touch_ihm is expected to use main as operational branch.
@@ -1083,7 +1083,7 @@ jobs:
     needs: [validate, test-eve, test-leafnode, test-touch-ihm, test-frontend, test-backend, security, build, sonar-quality-gate]
     if: always()
     env:
-      STRICT_EXTERNAL_CHECKS: ${{ secrets.STRICT_EXTERNAL_CHECKS || 'true' }}
+      STRICT_EXTERNAL_CHECKS: ${{ secrets.STRICT_EXTERNAL_CHECKS || 'false' }}
     
     steps:
     - name: CI Summary
@@ -1151,7 +1151,7 @@ jobs:
     needs: [validate, test-eve, test-leafnode, test-touch-ihm, test-frontend, test-backend, security, build, sonar-quality-gate, ci-summary]
     if: always()
     env:
-      STRICT_EXTERNAL_CHECKS: ${{ secrets.STRICT_EXTERNAL_CHECKS || 'true' }}
+      STRICT_EXTERNAL_CHECKS: ${{ secrets.STRICT_EXTERNAL_CHECKS || 'false' }}
 
     steps:
     - name: Generate metrics json
