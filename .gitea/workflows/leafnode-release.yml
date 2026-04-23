@@ -183,24 +183,7 @@ jobs:
 
         API="https://${GITEA_HOST}/api/v1/repos/${GITEA_OWNER}/${GITEA_REPO}"
 
-        BODY="$(python3 - <<'PY'
-        import json
-        import os
-
-        payload = {
-          "tag_name": os.environ["TAG"],
-          "name": f'leafnode {os.environ["TAG"]}',
-          "body": (
-            f'Automated firmware build for {os.environ["CRATE_NAME"]} v{os.environ["CRATE_VERSION"]}.\n\n'
-            f'Built from commit {os.environ["GITHUB_SHA"]}.\n\n'
-            'Flash with:\n  espflash flash --chip esp32 leafnode-firmware.bin'
-          ),
-          "draft": False,
-          "prerelease": False,
-        }
-        print(json.dumps(payload, ensure_ascii=True))
-        PY
-        )"
+        BODY="$(python3 -c 'import json, os; print(json.dumps({"tag_name": os.environ["TAG"], "name": f"leafnode {os.environ[\"TAG\"]}", "body": f"Automated firmware build for {os.environ[\"CRATE_NAME\"]} v{os.environ[\"CRATE_VERSION\"]}.\\n\\nBuilt from commit {os.environ[\"GITHUB_SHA\"]}.\\n\\nFlash with:\\n  espflash flash --chip esp32 leafnode-firmware.bin", "draft": False, "prerelease": False}, ensure_ascii=True))')"
 
         api_post_json() {
           local url="$1"
