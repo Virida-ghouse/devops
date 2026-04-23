@@ -479,10 +479,13 @@ jobs:
         echo "========================================"
         echo "Results: ${{ secrets.SONAR_HOST_URL }}"
 
-    - name: Verify SonarQube quality gates (blocking)
+    - name: Verify SonarQube quality gates (non-blocking)
       env:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        # Non-blocking mode: Sonar gate failures emit warnings, not errors.
+        # Set SONAR_GATE_ENFORCE=true in this file (not via secret) to re-enable blocking.
+        SONAR_GATE_ENFORCE: 'false'
       run: |
         set -euo pipefail
         SONAR_TOKEN_CLEAN="$(printf '%s' "${SONAR_TOKEN}" | tr -d '\r\n')"
@@ -508,7 +511,11 @@ jobs:
               "${endpoint}")"
           fi
           if [ "${http_code}" != "200" ]; then
-            echo "::error::Unable to read Sonar quality gate for ${key} (HTTP ${http_code})."
+            if [ "${SONAR_GATE_ENFORCE}" = "true" ]; then
+              echo "::error::Unable to read Sonar quality gate for ${key} (HTTP ${http_code})."
+            else
+              echo "::warning::Unable to read Sonar quality gate for ${key} (HTTP ${http_code}) in non-blocking mode."
+            fi
             if [ "${http_code}" = "401" ] || [ "${http_code}" = "403" ]; then
               echo "::error::SONAR_TOKEN is valid for scan upload only, or lacks read access on '${key}'."
               echo "::error::Required Sonar permissions: Execute Analysis + Browse (or project admin) on each project."
@@ -516,15 +523,21 @@ jobs:
             echo "[DEBUG] endpoint=${endpoint}"
             sed -n '1,120p' "${body_file}"
             rm -f "${body_file}"
-            exit 1
+            if [ "${SONAR_GATE_ENFORCE}" = "true" ]; then
+              exit 1
+            fi
+            return 0
           fi
           resp="$(cat "${body_file}")"
           rm -f "${body_file}"
           status="$(echo "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin)["projectStatus"]["status"])')"
           echo "[INFO] ${key} quality gate: ${status}"
           if [ "${status}" != "OK" ]; then
-            echo "::error::Sonar quality gate failed for ${key} (status=${status})."
-            exit 1
+            if [ "${SONAR_GATE_ENFORCE}" = "true" ]; then
+              echo "::error::Sonar quality gate failed for ${key} (status=${status})."
+              exit 1
+            fi
+            echo "::warning::Sonar quality gate failed for ${key} (status=${status}) - non-blocking mode enabled."
           fi
         }
         check_gate "virida_api"

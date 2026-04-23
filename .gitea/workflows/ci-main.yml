@@ -513,6 +513,24 @@ jobs:
         path: virida_touch_ihm
         token: ${{ secrets.GITEA }}
 
+    - name: Inspect virida_touch_ihm checkout
+      working-directory: virida_touch_ihm
+      run: |
+        set -euo pipefail
+        echo "--- pwd ---"
+        pwd
+        echo "--- git HEAD (one line) ---"
+        if ! git log -1 --oneline 2>/tmp/gitlog.err; then
+          echo "::warning::git log failed (repo may be empty or not a git checkout)"
+          sed -n '1,20p' /tmp/gitlog.err || true
+        fi
+        echo "--- git status ---"
+        git status --short --branch 2>/dev/null || true
+        echo "--- root listing ---"
+        ls -la
+        echo "--- package.json candidates (depth<=3, excluding node_modules) ---"
+        find . -maxdepth 3 -name package.json -not -path '*/node_modules/*' -print 2>/dev/null || true
+
     - &setup_node_step
       name: Setup Node.js
       uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -523,7 +541,32 @@ jobs:
       working-directory: virida_touch_ihm
       run: |
         set -euo pipefail
-        if [ ! -f "package.json" ]; then
+
+        # Resolve where package.json actually lives. Supports flat repos and
+        # common monorepo layouts (apps/*, packages/*). If multiple candidates
+        # exist at depth<=3 we refuse to guess and fall back to the usual
+        # warning/skip path.
+        PKG_DIR=""
+        if [ -f "package.json" ]; then
+          PKG_DIR="."
+        else
+          CANDIDATES_FILE="$(mktemp)"
+          find . -maxdepth 3 -name package.json -not -path '*/node_modules/*' -print 2>/dev/null \
+            | sed 's|^\./||' \
+            | sort -u > "${CANDIDATES_FILE}" || true
+          COUNT="$(wc -l < "${CANDIDATES_FILE}" | tr -d ' ')"
+          if [ "${COUNT}" = "1" ]; then
+            CANDIDATE="$(head -n1 "${CANDIDATES_FILE}")"
+            PKG_DIR="$(dirname "${CANDIDATE}")"
+            echo "::warning::No root package.json; using detected subdir '${PKG_DIR}'."
+          elif [ "${COUNT}" -gt 1 ]; then
+            echo "::warning::Multiple package.json candidates found, refusing to guess:"
+            sed 's/^/  - /' "${CANDIDATES_FILE}"
+          fi
+          rm -f "${CANDIDATES_FILE}"
+        fi
+
+        if [ -z "${PKG_DIR}" ]; then
           if [ "${STRICT_EXTERNAL_CHECKS}" = "true" ]; then
             echo "::error::No package.json found for virida_touch_ihm; strict external checks enabled."
             exit 1
@@ -531,6 +574,10 @@ jobs:
           echo "::warning::No package.json found; skipping virida_touch_ihm."
           exit 0
         fi
+
+        cd "${PKG_DIR}"
+        echo "[INFO] Using package dir: virida_touch_ihm/${PKG_DIR}"
+
         if npm ci --include=dev --ignore-scripts; then
           echo "[OK] npm ci"
         else
