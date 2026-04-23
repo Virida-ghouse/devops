@@ -2,7 +2,7 @@ name: VIRIDA CI - Main Pipeline
 
 on:
   push:
-    branches: [ '**' ]
+    branches: [ main, master ]
   pull_request:
     branches: [ main ]
   # Mirror mode on Gitea does not emit push events for synced commits.
@@ -109,6 +109,7 @@ jobs:
         python3 - <<'PY'
         import glob
         import importlib
+        import os
         import subprocess
         import sys
         def load_yaml_or_install():
@@ -116,12 +117,17 @@ jobs:
                 return importlib.import_module("yaml")
             except ModuleNotFoundError:
                 print("::warning::PyYAML missing on runner, attempting runtime install via pip.")
+                target_dir = "/tmp/virida-pyyaml"
                 try:
-                    subprocess.check_call([sys.executable, "-m", "pip", "install", "--user", "PyYAML"])
+                    subprocess.check_call([sys.executable, "-m", "pip", "install", "--target", target_dir, "PyYAML"])
                 except Exception as exc:
                     print(f"::error::Unable to install PyYAML dynamically: {exc}")
                     print("::error::Pre-bake python3-yaml/PyYAML in the runner image.")
                     sys.exit(1)
+                # Force import path to the explicit install target.
+                if os.path.isdir(target_dir) and target_dir not in sys.path:
+                    sys.path.insert(0, target_dir)
+                importlib.invalidate_caches()
                 return importlib.import_module("yaml")
         yaml = load_yaml_or_install()
 
@@ -525,7 +531,7 @@ jobs:
           echo "::warning::No package.json found; skipping virida_touch_ihm."
           exit 0
         fi
-        if npm ci --ignore-scripts; then
+        if npm ci --include=dev --ignore-scripts; then
           echo "[OK] npm ci"
         else
           echo "::error::npm ci failed (lockfile mismatch or registry issue)."
@@ -595,7 +601,8 @@ jobs:
           echo "::error::Missing virida_app/package.json. Frontend checks cannot run."
           exit 1
         fi
-        npm ci --ignore-scripts
+        # Keep devDependencies available even on runners forcing production installs.
+        npm ci --include=dev --production=false --ignore-scripts
       
     - name: Lint code
       working-directory: virida_app
@@ -613,6 +620,10 @@ jobs:
         if grep -q "Invalid option '--ext'" "${TMP_LOG}" || grep -q "eslint.config.js" "${TMP_LOG}"; then
           TARGET="."
           if [ -d "src" ]; then TARGET="src"; fi
+          if grep -q "Cannot find package 'typescript-eslint'" "${TMP_LOG}"; then
+            echo "::warning::Missing typescript-eslint on runner; installing lint-only dependencies before retry."
+            npm install --no-save --include=dev typescript-eslint @typescript-eslint/parser @typescript-eslint/eslint-plugin
+          fi
           echo "::warning::Detected ESLint flat-config CLI incompatibility in npm lint script; retrying with direct eslint ${TARGET}."
           npx eslint "${TARGET}"
           rm -f "${TMP_LOG}"
@@ -657,7 +668,7 @@ jobs:
           exit 1
         fi
         cd virida_api
-        npm ci
+        npm ci --include=dev
         export DATABASE_URL="postgresql://user:pass@localhost:5432/virida?schema=public"
         npx prisma generate
 
