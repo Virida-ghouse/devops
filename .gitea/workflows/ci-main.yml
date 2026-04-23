@@ -85,11 +85,11 @@ jobs:
         submodules: false
 
     - &checkout_virida_api_step
-      name: Checkout virida_api
+      name: Checkout virida_api (GitHub direct - temp fix)
       uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       with:
-        repository: Virida/virida_api
-        ref: ${{ env.VIRIDA_API_REF }}
+        repository: Virida-ghouse/virida_api
+        ref: 15602d46782224fcd7f650755ccc5814da2fe154
         path: virida_api
         token: ${{ secrets.GITEA }}
 
