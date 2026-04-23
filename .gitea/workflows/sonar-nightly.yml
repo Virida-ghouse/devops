@@ -355,8 +355,10 @@ jobs:
           -Dsonar.projectKey=virida_app
           -Dsonar.projectName=virida_app
           -Dsonar.sources="${SCAN_SOURCES}"
-          -Dsonar.exclusions='dist/**,public/**,node_modules/**,coverage/**,**/*.d.ts,**/*.min.js,**/*.bundle.js,**/*.generated.*,src/**/*.test.ts,src/**/*.test.tsx,src/**/*.integration.test.tsx,src/hooks/useThree.ts,src/hooks/useViridaSensors.ts,src/services/api/index.ts,src/services/api/README.md,src/contexts/RGPDContext.tsx,src/contexts/ThemeContext.tsx'
-          -Dsonar.coverage.exclusions='src/hooks/useThree.ts,src/hooks/useViridaSensors.ts,src/services/api/index.ts,src/contexts/RGPDContext.tsx,src/contexts/ThemeContext.tsx'
+          -Dsonar.tests=src
+          -Dsonar.test.inclusions='**/*.test.ts,**/*.test.tsx,**/*.spec.ts,**/*.spec.tsx'
+          -Dsonar.exclusions='dist/**,public/**,node_modules/**,coverage/**,**/*.d.ts,**/*.min.js,**/*.bundle.js,**/*.generated.*,**/*.test.ts,**/*.test.tsx,**/*.spec.ts,**/*.spec.tsx,src/main.tsx,src/vite-env.d.ts'
+          -Dsonar.coverage.exclusions='src/main.tsx,src/vite-env.d.ts'
           -Dsonar.javascript.node.maxspace=1024
           -Dsonar.scm.disabled=true
           -Dsonar.sourceEncoding=UTF-8
