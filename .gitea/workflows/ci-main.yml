@@ -948,7 +948,7 @@ jobs:
           --scanners vuln,secret \
           --severity HIGH,CRITICAL \
           --exit-code 1 \
-          --no-progress \
+          --quiet \
           .
 
     - name: Trivy IaC scan (blocking on high/critical)
@@ -957,7 +957,7 @@ jobs:
         /tmp/trivy config \
           --severity HIGH,CRITICAL \
           --exit-code 1 \
-          --no-progress \
+          --quiet \
           .
 
     - name: Trivy container image scan (progressive)
@@ -980,7 +980,7 @@ jobs:
         fi
         # Lightweight target image from runner base.
         docker pull alpine:3.21 >/dev/null
-        /tmp/trivy image --severity HIGH,CRITICAL --exit-code 1 --no-progress alpine:3.21
+        /tmp/trivy image --severity HIGH,CRITICAL --exit-code 1 --quiet alpine:3.21
 
     - name: Install Semgrep (progressive SAST)
       env:
