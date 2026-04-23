@@ -86,12 +86,21 @@ jobs:
 
     - &checkout_virida_api_step
       name: Checkout virida_api (GitHub direct - temp fix)
-      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      with:
-        repository: Virida-ghouse/virida_api
-        ref: 15602d46782224fcd7f650755ccc5814da2fe154
-        path: virida_api
-        token: ${{ secrets.GITEA }}
+      env:
+        GH_TOKEN: ${{ secrets.GH_TOKEN_MARKETPLACE }}
+      run: |
+        set -euo pipefail
+        if [ -z "${GH_TOKEN}" ]; then
+          echo "::error::Missing secret GH_TOKEN_MARKETPLACE for GitHub checkout"
+          exit 1
+        fi
+        cd "${GITHUB_WORKSPACE}"
+        rm -rf virida_api
+        git clone --depth 1 https://x-access-token:${GH_TOKEN}@github.com/Virida-ghouse/virida_api.git virida_api
+        cd virida_api
+        git fetch --depth 1 origin 15602d46782224fcd7f650755ccc5814da2fe154
+        git checkout 15602d46782224fcd7f650755ccc5814da2fe154
+        echo "[OK] Checked out virida_api at commit 15602d46 (security fixes)"
 
     - &checkout_virida_app_step
       name: Checkout virida_app
