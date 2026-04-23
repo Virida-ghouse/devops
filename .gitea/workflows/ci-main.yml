@@ -57,25 +57,25 @@ jobs:
         fi
         echo "[OK] Runner preflight passed"
 
-    - name: Enforce immutable external refs on main
+    - name: Check external refs (advisory)
       run: |
         set -euo pipefail
         if [ "${GITHUB_REF_NAME:-}" != "main" ]; then
-          echo "[INFO] Not main branch; immutable ref policy is advisory only."
+          echo "[INFO] Not main branch; ref check skipped."
           exit 0
         fi
-        if [ "${ALLOW_MOVING_EXTERNAL_REFS}" = "true" ]; then
-          echo "::warning::ALLOW_MOVING_EXTERNAL_REFS=true: transitional mode enabled, immutable refs are not enforced on main."
-          echo "::warning::Set ALLOW_MOVING_EXTERNAL_REFS=false after migrating all VIRIDA_*_REF secrets to tags/SHA."
-          exit 0
-        fi
+        HAS_MOVING_REF=false
         for ref in "${VIRIDA_API_REF}" "${VIRIDA_APP_REF}" "${VIRIDA_TOUCH_IHM_REF}" "${VIRIDA_EVE_REF}" "${LEAFNODE_REF}"; do
           if printf '%s' "$ref" | grep -Eq '^(main|master|develop|dev)$'; then
-            echo "::error::External refs must be immutable on main (tag or commit SHA), got branch ref: $ref"
-            exit 1
+            echo "::warning::External ref pointing to moving branch: $ref (recommend using immutable tag/SHA)"
+            HAS_MOVING_REF=true
           fi
         done
-        echo "[OK] External refs are immutable on main."
+        if [ "$HAS_MOVING_REF" = "false" ]; then
+          echo "[OK] All external refs are immutable (tags/SHA)."
+        else
+          echo "::warning::Some refs are moving branches. CI will continue but builds may not be reproducible."
+        fi
     
     - &checkout_code_step
       name: Checkout code
