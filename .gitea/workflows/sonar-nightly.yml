@@ -139,9 +139,11 @@ jobs:
       env:
         NODE_OPTIONS: --no-warnings
         CI: 'true'
+        DATABASE_URL: 'postgresql://user:pass@localhost:5432/marketplace?schema=public'
       run: |
         set -euo pipefail
         npm ci --include=dev --ignore-scripts
+        npx prisma generate
         COVERAGE_SCRIPT="$(node -e "const s=require('./package.json').scripts||{}; const c=['test:coverage','coverage','test:ci']; console.log(c.find(k=>s[k])||'')")"
         HAS_TEST_SCRIPT="$(node -e "const s=require('./package.json').scripts||{}; process.stdout.write(s.test ? 'yes' : 'no')")"
         TEST_SCRIPT_VALUE="$(node -e "const s=require('./package.json').scripts||{}; process.stdout.write(String(s.test||''))")"
