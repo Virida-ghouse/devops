@@ -214,9 +214,9 @@ jobs:
           -Dsonar.projectKey=virida_api \
           -Dsonar.projectName=virida_api \
           -Dsonar.sources=src \
-          -Dsonar.tests=__tests__ \
-          -Dsonar.test.inclusions='**/*.test.js,**/*.spec.js' \
-          -Dsonar.exclusions='node_modules/**,dist/**,build/**,coverage/**,**/*.min.js,**/*.bundle.js,prisma/migrations/**,**/*.generated.*,**/*.test.js,**/*.spec.js' \
+          -Dsonar.tests=tests \
+          -Dsonar.test.inclusions='tests/**/*,**/*.test.js,**/*.spec.js' \
+          -Dsonar.exclusions='node_modules/**,dist/**,build/**,coverage/**,**/*.min.js,**/*.bundle.js,prisma/migrations/**,**/*.generated.*,**/*.test.js,**/*.spec.js,tests/**' \
           -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
           -Dsonar.javascript.node.maxspace=512 \
           -Dsonar.scm.disabled=true \
