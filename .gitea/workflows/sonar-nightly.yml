@@ -1,8 +1,7 @@
-name: SonarQube Analysis - Backend APIs Only
+name: SonarQube Analysis - Backend APIs + EVE
 
-# Scans only virida_api and Virida_marketplace_api
+# Scans virida_api, Virida_marketplace_api, and virida-eve
 # Coverage minimum: 90% enforced via quality gates
-# Updated: 2026-04-24 - Fixed tests directory path (tests, not __tests__)
 
 on:
   workflow_run:
@@ -21,6 +20,7 @@ env:
   NODE_VERSION: '20.19.0'
   VIRIDA_API_REF: ${{ secrets.VIRIDA_API_REF || 'main' }}
   VIRIDA_MARKETPLACE_API_REF: ${{ secrets.VIRIDA_MARKETPLACE_API_REF || 'main' }}
+  VIRIDA_EVE_REF: ${{ secrets.VIRIDA_EVE_REF || 'main' }}
   SONAR_SCANNER_VERSION: '8.0.1.6346'
   SONAR_SCANNER_DIR: '/tmp/sonar-scanner'
   SONAR_COVERAGE_MINIMUM: '90'
@@ -28,7 +28,7 @@ env:
 jobs:
   sonarqube:
     runs-on: virida-host
-    name: SonarQube Analysis - Backend APIs
+    name: SonarQube Analysis - Backend APIs + EVE
     timeout-minutes: 30
 
     steps:
@@ -56,7 +56,7 @@ jobs:
           exit 0
         fi
         HAS_MOVING_REF=false
-        for ref in "${VIRIDA_API_REF}" "${VIRIDA_MARKETPLACE_API_REF}"; do
+        for ref in "${VIRIDA_API_REF}" "${VIRIDA_MARKETPLACE_API_REF}" "${VIRIDA_EVE_REF}"; do
           if printf '%s' "$ref" | grep -Eq '^(main|master|develop|dev)$'; then
             echo "::warning::External ref pointing to moving branch: $ref (recommend using immutable tag/SHA)"
             HAS_MOVING_REF=true
@@ -73,6 +73,14 @@ jobs:
       with:
         token: ${{ secrets.GITEA }}
         submodules: false
+
+    - name: Checkout virida-eve
+      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      with:
+        repository: Virida/virida-eve
+        ref: ${{ env.VIRIDA_EVE_REF }}
+        path: virida-eve
+        token: ${{ secrets.GITEA }}
 
     - name: Checkout virida_api (GitHub direct - temp fix)
       env:
@@ -187,6 +195,30 @@ jobs:
           echo "::warning::No test script found in Virida_marketplace_api/package.json"
         fi
 
+    - name: Install virida-eve deps + run tests with coverage
+      working-directory: virida-eve
+      run: |
+        set -euo pipefail
+        if command -v python3 >/dev/null 2>&1; then
+          echo "[INFO] Python version: $(python3 --version)"
+        else
+          echo "::warning::python3 not available on runner; skipping virida-eve tests."
+          exit 0
+        fi
+        if [ -f requirements.txt ]; then
+          pip3 install --quiet -r requirements.txt 2>/dev/null || pip3 install --quiet --user -r requirements.txt || true
+        fi
+        if [ -f requirements-dev.txt ]; then
+          pip3 install --quiet -r requirements-dev.txt 2>/dev/null || pip3 install --quiet --user -r requirements-dev.txt || true
+        fi
+        pip3 install --quiet pytest pytest-cov 2>/dev/null || pip3 install --quiet --user pytest pytest-cov || true
+        if [ -d tests ] || [ -d test ] || find . -maxdepth 2 -name "test_*.py" -o -name "*_test.py" | grep -q .; then
+          echo "[INFO] Running pytest with coverage for virida-eve"
+          python3 -m pytest --cov=. --cov-report=xml:coverage.xml --cov-report=term -q 2>&1 || echo "::warning::virida-eve tests failed or partially passed"
+        else
+          echo "::warning::No test files found in virida-eve; skipping tests"
+        fi
+
     - name: Install SonarScanner CLI
       run: |
         set -euo pipefail
@@ -274,20 +306,57 @@ jobs:
         fi
         "${SONAR_SCANNER_DIR}/bin/sonar-scanner" "${SCAN_ARGS[@]}"
 
+    - name: Sonar scan virida-eve
+      working-directory: virida-eve
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        SONAR_SCANNER_OPTS: '-Xmx512m -Xms128m'
+        SONAR_SCANNER_JAVA_OPTS: '-Xmx512m -Xms128m'
+      run: |
+        set -euo pipefail
+        SONAR_TOKEN_CLEAN="$(printf '%s' "${SONAR_TOKEN}" | tr -d '\r\n')"
+        SONAR_HOST_URL_CLEAN="$(printf '%s' "${SONAR_HOST_URL}" | tr -d '\r\n' | sed -E 's#(https?://[^/]+).*#\1#')"
+        if [ -z "${SONAR_TOKEN_CLEAN}" ]; then
+          echo "::error::SONAR_TOKEN empty after trim"
+          exit 1
+        fi
+        SCAN_ARGS=(
+          -Dsonar.host.url="${SONAR_HOST_URL_CLEAN}"
+          -Dsonar.token="${SONAR_TOKEN_CLEAN}"
+          -Dsonar.projectKey=virida-eve
+          -Dsonar.projectName=virida-eve
+          -Dsonar.sources=.
+          -Dsonar.inclusions='**/*.py'
+          -Dsonar.exclusions='node_modules/**,venv/**,.venv/**,__pycache__/**,*.pyc,tests/**,test/**,*_test.py,test_*.py,conftest.py,setup.py'
+          -Dsonar.scm.disabled=true
+          -Dsonar.sourceEncoding=UTF-8
+          -Dsonar.scanner.skipJreProvisioning=true
+        )
+        if [ -f coverage.xml ]; then
+          SCAN_ARGS+=(-Dsonar.python.coverage.reportPaths=coverage.xml)
+        fi
+        if [ -d tests ] || [ -d test ]; then
+          SCAN_ARGS+=(-Dsonar.tests=tests,test)
+          SCAN_ARGS+=(-Dsonar.test.inclusions='tests/**/*,test/**/*,*_test.py,test_*.py')
+        fi
+        "${SONAR_SCANNER_DIR}/bin/sonar-scanner" "${SCAN_ARGS[@]}"
+
     - name: Summary
       if: always()
       run: |
         echo "========================================"
-        echo "  SonarQube scan finished - Backend APIs only"
+        echo "  SonarQube scan finished"
         echo "========================================"
         echo "Scanned projects:"
         echo "  • virida_api"
         echo "  • Virida_marketplace_api"
+        echo "  • virida-eve"
         echo ""
         echo "Coverage minimum required: ${SONAR_COVERAGE_MINIMUM}%"
         echo "Results: ${{ secrets.SONAR_HOST_URL }}"
 
-    - name: Verify quality gates - Backend APIs only
+    - name: Verify quality gates
       env:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
@@ -346,6 +415,7 @@ jobs:
             echo "::warning::Sonar quality gate failed for ${key} (status=${status}) - non-blocking mode enabled."
           fi
         }
-        echo "Checking quality gates for backend APIs only..."
+        echo "Checking quality gates..."
         check_gate "virida_api"
         check_gate "Virida_marketplace_api"
+        check_gate "virida-eve"
