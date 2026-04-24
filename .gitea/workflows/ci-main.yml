@@ -85,22 +85,37 @@ jobs:
         submodules: false
 
     - &checkout_virida_api_step
-      name: Checkout virida_api (GitHub direct - temp fix)
+      name: Checkout virida_api (GitHub direct)
       env:
         GH_TOKEN: ${{ secrets.GH_TOKEN_MARKETPLACE }}
+        REQUESTED_REF: ${{ env.VIRIDA_API_REF }}
       run: |
         set -euo pipefail
         if [ -z "${GH_TOKEN}" ]; then
           echo "::error::Missing secret GH_TOKEN_MARKETPLACE for GitHub checkout"
           exit 1
         fi
+        REPO_URL="https://x-access-token:${GH_TOKEN}@github.com/Virida-ghouse/virida_api.git"
+        TARGET_DIR="virida_api"
+        if [ -z "${REQUESTED_REF:-}" ]; then
+          REQUESTED_REF="main"
+        fi
+        RESOLVED_REF="${REQUESTED_REF}"
+        if ! git ls-remote --exit-code --heads "${REPO_URL}" "${REQUESTED_REF}" >/dev/null 2>&1 \
+          && ! git ls-remote --exit-code --tags "${REPO_URL}" "${REQUESTED_REF}" >/dev/null 2>&1; then
+          echo "::warning::Requested ref '${REQUESTED_REF}' not found on virida_api. Trying fallback branch main."
+          if git ls-remote --exit-code --heads "${REPO_URL}" "main" >/dev/null 2>&1; then
+            RESOLVED_REF="main"
+          else
+            echo "::error::No usable ref found (requested='${REQUESTED_REF}', fallback='main')."
+            exit 1
+          fi
+        fi
+        echo "[INFO] Cloning virida_api ref: ${RESOLVED_REF}"
         cd "${GITHUB_WORKSPACE}"
-        rm -rf virida_api
-        git clone --depth 1 https://x-access-token:${GH_TOKEN}@github.com/Virida-ghouse/virida_api.git virida_api
-        cd virida_api
-        git fetch --depth 1 origin 15602d46782224fcd7f650755ccc5814da2fe154
-        git checkout 15602d46782224fcd7f650755ccc5814da2fe154
-        echo "[OK] Checked out virida_api at commit 15602d46 (security fixes)"
+        rm -rf "${TARGET_DIR}"
+        git clone --depth 1 --branch "${RESOLVED_REF}" "${REPO_URL}" "${TARGET_DIR}"
+        git -C "${TARGET_DIR}" remote set-url origin "https://github.com/Virida-ghouse/virida_api.git"
 
     - &checkout_virida_app_step
       name: Checkout virida_app
