@@ -1149,8 +1149,9 @@ jobs:
             echo "::warning::Sonar quality gate failed for ${key} (status=${status}) - non-blocking mode enabled."
           fi
         }
+        echo "Checking quality gates for backend APIs only..."
         check_gate "virida_api"
-        check_gate "virida_app"
+        check_gate "Virida_marketplace_api"
 
   # ========================================
   # SUMMARY
