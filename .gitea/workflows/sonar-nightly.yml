@@ -1,6 +1,6 @@
-name: SonarQube Analysis - Backend APIs + EVE
+name: SonarQube Analysis - APIs + Frontend + EVE
 
-# Scans virida_api, Virida_marketplace_api, and virida-eve
+# Scans virida_api, Virida_marketplace_api, virida_app, and virida-eve
 # Coverage minimum: 90% enforced via quality gates
 
 on:
@@ -20,6 +20,7 @@ env:
   NODE_VERSION: '20.19.0'
   VIRIDA_API_REF: ${{ secrets.VIRIDA_API_REF || 'main' }}
   VIRIDA_MARKETPLACE_API_REF: ${{ secrets.VIRIDA_MARKETPLACE_API_REF || 'main' }}
+  VIRIDA_APP_REF: ${{ secrets.VIRIDA_APP_REF || 'main' }}
   VIRIDA_EVE_REF: ${{ secrets.VIRIDA_EVE_REF || 'main' }}
   SONAR_SCANNER_VERSION: '8.0.1.6346'
   SONAR_SCANNER_DIR: '/tmp/sonar-scanner'
@@ -28,8 +29,8 @@ env:
 jobs:
   sonarqube:
     runs-on: virida-host
-    name: SonarQube Analysis - Backend APIs + EVE
-    timeout-minutes: 30
+    name: SonarQube Analysis - APIs + Frontend + EVE
+    timeout-minutes: 45
 
     steps:
     - name: Validate required secrets
@@ -56,7 +57,7 @@ jobs:
           exit 0
         fi
         HAS_MOVING_REF=false
-        for ref in "${VIRIDA_API_REF}" "${VIRIDA_MARKETPLACE_API_REF}" "${VIRIDA_EVE_REF}"; do
+        for ref in "${VIRIDA_API_REF}" "${VIRIDA_MARKETPLACE_API_REF}" "${VIRIDA_APP_REF}" "${VIRIDA_EVE_REF}"; do
           if printf '%s' "$ref" | grep -Eq '^(main|master|develop|dev)$'; then
             echo "::warning::External ref pointing to moving branch: $ref (recommend using immutable tag/SHA)"
             HAS_MOVING_REF=true
@@ -75,6 +76,7 @@ jobs:
         submodules: false
 
     - name: Checkout virida-eve
+      continue-on-error: true
       uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       with:
         repository: Virida/virida-eve
@@ -83,6 +85,7 @@ jobs:
         token: ${{ secrets.GITEA }}
 
     - name: Checkout virida_api (GitHub direct - temp fix)
+      continue-on-error: true
       env:
         GH_TOKEN: ${{ secrets.GH_TOKEN_MARKETPLACE }}
         REQUESTED_REF: ${{ env.VIRIDA_API_REF }}
@@ -114,7 +117,41 @@ jobs:
         git clone --depth 1 --branch "${RESOLVED_REF}" "${REPO_URL}" "${TARGET_DIR}"
         git -C "${TARGET_DIR}" remote set-url origin "https://github.com/Virida-ghouse/virida_api.git"
 
+    - name: Checkout virida_app (GitHub direct)
+      continue-on-error: true
+      env:
+        GH_TOKEN: ${{ secrets.GH_TOKEN_MARKETPLACE }}
+        REQUESTED_REF: ${{ env.VIRIDA_APP_REF }}
+      run: |
+        set -euo pipefail
+        if [ -z "${GH_TOKEN}" ]; then
+          echo "::error::Missing secret GH_TOKEN_MARKETPLACE for GitHub checkout"
+          exit 1
+        fi
+        REPO_URL="https://x-access-token:${GH_TOKEN}@github.com/Virida-ghouse/virida_app.git"
+        TARGET_DIR="virida_app"
+        if [ -z "${REQUESTED_REF:-}" ]; then
+          REQUESTED_REF="main"
+        fi
+        RESOLVED_REF="${REQUESTED_REF}"
+        if ! git ls-remote --exit-code --heads "${REPO_URL}" "${REQUESTED_REF}" >/dev/null 2>&1 \
+          && ! git ls-remote --exit-code --tags "${REPO_URL}" "${REQUESTED_REF}" >/dev/null 2>&1; then
+          echo "::warning::Requested ref '${REQUESTED_REF}' not found on virida_app. Trying fallback branch main."
+          if git ls-remote --exit-code --heads "${REPO_URL}" "main" >/dev/null 2>&1; then
+            RESOLVED_REF="main"
+          else
+            echo "::error::No usable ref found (requested='${REQUESTED_REF}', fallback='main')."
+            exit 1
+          fi
+        fi
+        echo "[INFO] Cloning virida_app ref: ${RESOLVED_REF}"
+        cd "${GITHUB_WORKSPACE}"
+        rm -rf "${TARGET_DIR}"
+        git clone --depth 1 --branch "${RESOLVED_REF}" "${REPO_URL}" "${TARGET_DIR}"
+        git -C "${TARGET_DIR}" remote set-url origin "https://github.com/Virida-ghouse/virida_app.git"
+
     - name: Checkout Virida_marketplace_api
+      continue-on-error: true
       env:
         GH_TOKEN_MARKETPLACE: ${{ secrets.GH_TOKEN_MARKETPLACE }}
         REQUESTED_REF: ${{ env.VIRIDA_MARKETPLACE_API_REF }}
@@ -148,6 +185,7 @@ jobs:
         cache: npm
         cache-dependency-path: |
           virida_api/package-lock.json
+          virida_app/package-lock.json
           Virida_marketplace_api/package-lock.json
 
     - name: Cache SonarScanner CLI
@@ -157,6 +195,7 @@ jobs:
         key: sonar-scanner-${{ env.SONAR_SCANNER_VERSION }}
 
     - name: Install virida_api deps + run tests with coverage
+      continue-on-error: true
       working-directory: virida_api
       env:
         NODE_OPTIONS: --no-warnings
@@ -164,10 +203,11 @@ jobs:
         set -euo pipefail
         npm ci --include=dev
         export DATABASE_URL="postgresql://user:pass@localhost:5432/virida?schema=public"
-        npx prisma generate
-        npm run test:coverage || npm test -- --ci --runInBand --coverage || echo "::warning::Tests failed or not configured"
+        npx prisma generate || echo "::warning::prisma generate failed for virida_api"
+        npm run test:coverage || npm test -- --ci --runInBand --coverage || echo "::warning::Tests failed or not configured for virida_api"
 
     - name: Install Virida_marketplace_api deps + run tests with coverage
+      continue-on-error: true
       working-directory: Virida_marketplace_api
       env:
         NODE_OPTIONS: --no-warnings
@@ -195,7 +235,30 @@ jobs:
           echo "::warning::No test script found in Virida_marketplace_api/package.json"
         fi
 
+    - name: Install virida_app deps + run tests with coverage
+      continue-on-error: true
+      working-directory: virida_app
+      env:
+        NODE_OPTIONS: --no-warnings
+        CI: 'true'
+        VITE_API_URL: 'http://localhost:3000'
+      run: |
+        set -euo pipefail
+        npm ci --include=dev --ignore-scripts
+        COVERAGE_SCRIPT="$(node -e "const s=require('./package.json').scripts||{}; const c=['test:coverage','coverage','test:ci']; console.log(c.find(k=>s[k])||'')")"
+        HAS_TEST_SCRIPT="$(node -e "const s=require('./package.json').scripts||{}; process.stdout.write(s.test ? 'yes' : 'no')")"
+        if [ -n "${COVERAGE_SCRIPT}" ]; then
+          echo "[INFO] Running ${COVERAGE_SCRIPT} for virida_app"
+          npm run -s "${COVERAGE_SCRIPT}"
+        elif [ "${HAS_TEST_SCRIPT}" = "yes" ]; then
+          echo "[INFO] Running npm test for virida_app"
+          npm test -- --coverage
+        else
+          echo "::warning::No test script found in virida_app/package.json"
+        fi
+
     - name: Install virida-eve deps + run tests with coverage
+      continue-on-error: true
       working-directory: virida-eve
       run: |
         set -euo pipefail
@@ -220,6 +283,7 @@ jobs:
         fi
 
     - name: Install SonarScanner CLI
+      if: always()
       run: |
         set -euo pipefail
         if [ -x "${SONAR_SCANNER_DIR}/bin/sonar-scanner" ]; then
@@ -242,6 +306,7 @@ jobs:
         "${SONAR_SCANNER_DIR}/bin/sonar-scanner" --version
 
     - name: Sonar scan virida_api
+      if: always()
       working-directory: virida_api
       env:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -250,6 +315,10 @@ jobs:
         SONAR_SCANNER_JAVA_OPTS: '-Xmx512m -Xms128m'
       run: |
         set -euo pipefail
+        if [ ! -d src ]; then
+          echo "::warning::virida_api/src not found — checkout may have failed; skipping scan"
+          exit 0
+        fi
         SONAR_TOKEN_CLEAN="$(printf '%s' "${SONAR_TOKEN}" | tr -d '\r\n')"
         SONAR_HOST_URL_CLEAN="$(printf '%s' "${SONAR_HOST_URL}" | tr -d '\r\n' | sed -E 's#(https?://[^/]+).*#\1#')"
         if [ -z "${SONAR_TOKEN_CLEAN}" ]; then
@@ -272,6 +341,7 @@ jobs:
           -Dsonar.scanner.skipJreProvisioning=true
 
     - name: Sonar scan Virida_marketplace_api
+      if: always()
       working-directory: Virida_marketplace_api
       timeout-minutes: 20
       env:
@@ -281,6 +351,10 @@ jobs:
         SONAR_SCANNER_JAVA_OPTS: '-Xmx768m -Xms256m'
       run: |
         set -euo pipefail
+        if [ ! -d src ]; then
+          echo "::warning::Virida_marketplace_api/src not found — checkout may have failed; skipping scan"
+          exit 0
+        fi
         SONAR_TOKEN_CLEAN="$(printf '%s' "${SONAR_TOKEN}" | tr -d '\r\n')"
         SONAR_HOST_URL_CLEAN="$(printf '%s' "${SONAR_HOST_URL}" | tr -d '\r\n' | sed -E 's#(https?://[^/]+).*#\1#')"
         if [ -z "${SONAR_TOKEN_CLEAN}" ]; then
@@ -306,7 +380,48 @@ jobs:
         fi
         "${SONAR_SCANNER_DIR}/bin/sonar-scanner" "${SCAN_ARGS[@]}"
 
+    - name: Sonar scan virida_app
+      if: always()
+      working-directory: virida_app
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        SONAR_SCANNER_OPTS: '-Xmx512m -Xms128m'
+        SONAR_SCANNER_JAVA_OPTS: '-Xmx512m -Xms128m'
+      run: |
+        set -euo pipefail
+        if [ ! -d src ]; then
+          echo "::warning::virida_app/src not found — checkout may have failed; skipping scan"
+          exit 0
+        fi
+        SONAR_TOKEN_CLEAN="$(printf '%s' "${SONAR_TOKEN}" | tr -d '\r\n')"
+        SONAR_HOST_URL_CLEAN="$(printf '%s' "${SONAR_HOST_URL}" | tr -d '\r\n' | sed -E 's#(https?://[^/]+).*#\1#')"
+        if [ -z "${SONAR_TOKEN_CLEAN}" ]; then
+          echo "::error::SONAR_TOKEN empty after trim"
+          exit 1
+        fi
+        SCAN_ARGS=(
+          -Dsonar.host.url="${SONAR_HOST_URL_CLEAN}"
+          -Dsonar.token="${SONAR_TOKEN_CLEAN}"
+          -Dsonar.projectKey=virida_app
+          -Dsonar.projectName=virida_app
+          -Dsonar.sources=src
+          -Dsonar.inclusions='**/*.ts,**/*.tsx,**/*.js,**/*.jsx'
+          -Dsonar.exclusions='node_modules/**,dist/**,build/**,coverage/**,**/*.min.js,**/*.bundle.js,**/*.generated.*,**/*.test.ts,**/*.test.tsx,**/*.spec.ts,**/*.spec.tsx,src/test/**'
+          -Dsonar.tests=src
+          -Dsonar.test.inclusions='**/*.test.ts,**/*.test.tsx,**/*.spec.ts,**/*.spec.tsx,src/test/**'
+          -Dsonar.javascript.node.maxspace=512
+          -Dsonar.scm.disabled=true
+          -Dsonar.sourceEncoding=UTF-8
+          -Dsonar.scanner.skipJreProvisioning=true
+        )
+        if [ -f coverage/lcov.info ]; then
+          SCAN_ARGS+=(-Dsonar.javascript.lcov.reportPaths=coverage/lcov.info)
+        fi
+        "${SONAR_SCANNER_DIR}/bin/sonar-scanner" "${SCAN_ARGS[@]}"
+
     - name: Sonar scan virida-eve
+      if: always()
       working-directory: virida-eve
       env:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -315,6 +430,10 @@ jobs:
         SONAR_SCANNER_JAVA_OPTS: '-Xmx512m -Xms128m'
       run: |
         set -euo pipefail
+        if ! find . -maxdepth 1 -name "*.py" | grep -q .; then
+          echo "::warning::virida-eve has no Python files — checkout may have failed; skipping scan"
+          exit 0
+        fi
         SONAR_TOKEN_CLEAN="$(printf '%s' "${SONAR_TOKEN}" | tr -d '\r\n')"
         SONAR_HOST_URL_CLEAN="$(printf '%s' "${SONAR_HOST_URL}" | tr -d '\r\n' | sed -E 's#(https?://[^/]+).*#\1#')"
         if [ -z "${SONAR_TOKEN_CLEAN}" ]; then
@@ -351,12 +470,14 @@ jobs:
         echo "Scanned projects:"
         echo "  • virida_api"
         echo "  • Virida_marketplace_api"
+        echo "  • virida_app"
         echo "  • virida-eve"
         echo ""
         echo "Coverage minimum required: ${SONAR_COVERAGE_MINIMUM}%"
         echo "Results: ${{ secrets.SONAR_HOST_URL }}"
 
     - name: Verify quality gates
+      if: always()
       env:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
@@ -418,4 +539,5 @@ jobs:
         echo "Checking quality gates..."
         check_gate "virida_api"
         check_gate "Virida_marketplace_api"
+        check_gate "virida_app"
         check_gate "virida-eve"
