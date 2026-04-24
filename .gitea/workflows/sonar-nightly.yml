@@ -2,6 +2,7 @@ name: SonarQube Analysis - Backend APIs Only
 
 # Scans only virida_api and Virida_marketplace_api
 # Coverage minimum: 90% enforced via quality gates
+# Updated: 2026-04-24 - Fixed tests directory path (tests, not __tests__)
 
 on:
   workflow_run:
