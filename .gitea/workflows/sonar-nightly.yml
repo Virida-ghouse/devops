@@ -149,6 +149,9 @@ jobs:
         NODE_OPTIONS: --no-warnings
         CI: 'true'
         DATABASE_URL: 'postgresql://user:pass@localhost:5432/marketplace?schema=public'
+        CELLAR_ADDON_HOST: 'mock-s3.example.com'
+        CELLAR_ADDON_KEY_ID: 'mock-key-id'
+        CELLAR_ADDON_KEY_SECRET: 'mock-secret-key'
       run: |
         set -euo pipefail
         npm ci --include=dev --ignore-scripts
