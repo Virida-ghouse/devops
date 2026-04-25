@@ -241,7 +241,7 @@ jobs:
       env:
         NODE_OPTIONS: --no-warnings
         CI: 'true'
-        VITE_API_URL: 'http://localhost:3000'
+        VITE_API_URL: 'http://localhost:3001'
       run: |
         set -euo pipefail
         npm ci --include=dev --ignore-scripts
