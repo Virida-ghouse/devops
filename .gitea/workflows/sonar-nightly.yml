@@ -383,11 +383,12 @@ jobs:
     - name: Sonar scan virida_app
       if: always()
       working-directory: virida_app
+      timeout-minutes: 20
       env:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-        SONAR_SCANNER_OPTS: '-Xmx512m -Xms128m'
-        SONAR_SCANNER_JAVA_OPTS: '-Xmx512m -Xms128m'
+        SONAR_SCANNER_OPTS: '-Xmx1024m -Xms256m'
+        SONAR_SCANNER_JAVA_OPTS: '-Xmx1024m -Xms256m'
       run: |
         set -euo pipefail
         if [ ! -d src ]; then
@@ -410,7 +411,7 @@ jobs:
           -Dsonar.exclusions='node_modules/**,dist/**,build/**,coverage/**,**/*.min.js,**/*.bundle.js,**/*.generated.*,**/*.test.ts,**/*.test.tsx,**/*.spec.ts,**/*.spec.tsx,src/test/**'
           -Dsonar.tests=src
           -Dsonar.test.inclusions='**/*.test.ts,**/*.test.tsx,**/*.spec.ts,**/*.spec.tsx,src/test/**'
-          -Dsonar.javascript.node.maxspace=512
+          -Dsonar.javascript.node.maxspace=2048
           -Dsonar.scm.disabled=true
           -Dsonar.sourceEncoding=UTF-8
           -Dsonar.scanner.skipJreProvisioning=true
