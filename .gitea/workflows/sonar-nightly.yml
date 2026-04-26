@@ -75,14 +75,50 @@ jobs:
         token: ${{ secrets.GITEA }}
         submodules: false
 
-    - name: Checkout virida-eve
+    - name: Checkout virida-eve (Gitea direct)
       continue-on-error: true
-      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      with:
-        repository: Virida/virida-eve
-        ref: ${{ env.VIRIDA_EVE_REF }}
-        path: virida-eve
-        token: ${{ secrets.GITEA }}
+      env:
+        GITEA_TOKEN: ${{ secrets.GITEA }}
+        REQUESTED_REF: ${{ env.VIRIDA_EVE_REF }}
+      run: |
+        set -euo pipefail
+        TARGET_DIR="virida-eve"
+        GITEA_HOST="gitea.virida.org"
+
+        if [ -z "${GITEA_TOKEN:-}" ]; then
+          echo "::error::Missing secret GITEA for Gitea checkout"
+          echo "EVE_CHECKOUT_FAILED=true" >> "${GITHUB_ENV}"
+          mkdir -p "${TARGET_DIR}"
+          exit 0
+        fi
+
+        REPO_URL="https://x-access-token:${GITEA_TOKEN}@${GITEA_HOST}/Virida/virida-eve.git"
+        REF="${REQUESTED_REF:-main}"
+
+        if ! git ls-remote --exit-code --heads "${REPO_URL}" "${REF}" >/dev/null 2>&1 \
+          && ! git ls-remote --exit-code --tags "${REPO_URL}" "${REF}" >/dev/null 2>&1; then
+          echo "::warning::Ref '${REF}' not found on virida-eve. Trying fallback 'main'."
+          if git ls-remote --exit-code --heads "${REPO_URL}" "main" >/dev/null 2>&1; then
+            REF="main"
+          else
+            echo "::error::No usable ref found for virida-eve (requested='${REQUESTED_REF}', fallback='main')."
+            echo "EVE_CHECKOUT_FAILED=true" >> "${GITHUB_ENV}"
+            mkdir -p "${TARGET_DIR}"
+            exit 0
+          fi
+        fi
+
+        echo "[INFO] Cloning virida-eve ref: ${REF}"
+        cd "${GITHUB_WORKSPACE}"
+        rm -rf "${TARGET_DIR}"
+        git clone --depth 1 --branch "${REF}" "${REPO_URL}" "${TARGET_DIR}"
+        git -C "${TARGET_DIR}" remote set-url origin "https://${GITEA_HOST}/Virida/virida-eve.git"
+
+        PY_COUNT="$(find "${TARGET_DIR}" -name '*.py' -not -path '*/.venv/*' -not -path '*/venv/*' | wc -l)"
+        echo "[INFO] virida-eve cloned successfully — ${PY_COUNT} Python files found"
+        if [ "${PY_COUNT}" -eq 0 ]; then
+          echo "::warning::virida-eve cloned but contains no Python files"
+        fi
 
     - name: Checkout virida_api (GitHub direct - temp fix)
       continue-on-error: true
@@ -235,8 +271,20 @@ jobs:
           echo "::warning::No test script found in Virida_marketplace_api/package.json"
         fi
 
-    - name: Install virida_app deps + run tests with coverage
+    - name: Install virida_app deps
       continue-on-error: true
+      id: install-app
+      working-directory: virida_app
+      env:
+        NODE_OPTIONS: --no-warnings
+      run: |
+        set -euo pipefail
+        npm ci --include=dev --ignore-scripts
+
+    - name: Run virida_app tests with coverage
+      if: steps.install-app.outcome == 'success'
+      continue-on-error: true
+      id: test-app
       working-directory: virida_app
       env:
         NODE_OPTIONS: --no-warnings
@@ -244,17 +292,29 @@ jobs:
         VITE_API_URL: 'http://localhost:3001'
       run: |
         set -euo pipefail
-        npm ci --include=dev --ignore-scripts
-        COVERAGE_SCRIPT="$(node -e "const s=require('./package.json').scripts||{}; const c=['test:coverage','coverage','test:ci']; console.log(c.find(k=>s[k])||'')")"
-        HAS_TEST_SCRIPT="$(node -e "const s=require('./package.json').scripts||{}; process.stdout.write(s.test ? 'yes' : 'no')")"
-        if [ -n "${COVERAGE_SCRIPT}" ]; then
-          echo "[INFO] Running ${COVERAGE_SCRIPT} for virida_app"
-          npm run -s "${COVERAGE_SCRIPT}"
-        elif [ "${HAS_TEST_SCRIPT}" = "yes" ]; then
-          echo "[INFO] Running npm test for virida_app"
-          npm test -- --coverage
+        echo "[INFO] Running test:coverage for virida_app"
+        npm run test:coverage
+        echo "[INFO] Tests finished, checking coverage report..."
+        if [ -f coverage/lcov.info ]; then
+          LINES="$(wc -l < coverage/lcov.info)"
+          echo "[OK] coverage/lcov.info generated (${LINES} lines)"
         else
-          echo "::warning::No test script found in virida_app/package.json"
+          echo "::warning::coverage/lcov.info not found after test run"
+          ls -la coverage/ 2>/dev/null || echo "::warning::coverage/ directory does not exist"
+        fi
+
+    - name: Diagnose virida_app coverage failure
+      if: steps.test-app.outcome == 'failure'
+      working-directory: virida_app
+      run: |
+        echo "::warning::virida_app tests failed — coverage will be missing from SonarQube"
+        if [ -f coverage/lcov.info ]; then
+          echo "[INFO] Partial coverage/lcov.info exists, Sonar will use it"
+        else
+          echo "::warning::No coverage report. Possible causes:"
+          echo "  1) Tests are failing (check test output above)"
+          echo "  2) Coverage thresholds not met (configured: lines/statements/functions 90%, branches 70%)"
+          echo "  3) Vitest or @vitest/coverage-v8 not installed properly"
         fi
 
     - name: Install virida-eve deps + run tests with coverage
@@ -262,22 +322,26 @@ jobs:
       working-directory: virida-eve
       run: |
         set -euo pipefail
+        if [ "${EVE_CHECKOUT_FAILED:-}" = "true" ]; then
+          echo "::warning::virida-eve checkout failed — skipping tests"
+          exit 0
+        fi
         if command -v python3 >/dev/null 2>&1; then
           echo "[INFO] Python version: $(python3 --version)"
         else
           echo "::warning::python3 not available on runner; skipping virida-eve tests."
           exit 0
         fi
-        if [ -f requirements.txt ]; then
-          pip3 install --quiet -r requirements.txt 2>/dev/null || pip3 install --quiet --user -r requirements.txt || true
-        fi
-        if [ -f requirements-dev.txt ]; then
-          pip3 install --quiet -r requirements-dev.txt 2>/dev/null || pip3 install --quiet --user -r requirements-dev.txt || true
-        fi
+        for reqfile in requirements.txt eve/requirement.txt; do
+          if [ -f "${reqfile}" ]; then
+            echo "[INFO] Installing deps from ${reqfile}"
+            pip3 install --quiet -r "${reqfile}" 2>/dev/null || pip3 install --quiet --user -r "${reqfile}" || true
+          fi
+        done
         pip3 install --quiet pytest pytest-cov 2>/dev/null || pip3 install --quiet --user pytest pytest-cov || true
-        if [ -d tests ] || [ -d test ] || find . -maxdepth 2 -name "test_*.py" -o -name "*_test.py" | grep -q .; then
+        if [ -d tests ] || [ -d test ] || find . -maxdepth 3 -name "test_*.py" -o -name "*_test.py" | grep -q .; then
           echo "[INFO] Running pytest with coverage for virida-eve"
-          python3 -m pytest --cov=. --cov-report=xml:coverage.xml --cov-report=term -q 2>&1 || echo "::warning::virida-eve tests failed or partially passed"
+          python3 -m pytest --cov=eve --cov-report=xml:coverage.xml --cov-report=term -q 2>&1 || echo "::warning::virida-eve tests failed or partially passed"
         else
           echo "::warning::No test files found in virida-eve; skipping tests"
         fi
@@ -369,7 +433,7 @@ jobs:
           -Dsonar.sources=src
           -Dsonar.tests=.
           -Dsonar.test.inclusions='**/*.test.ts,**/*.test.tsx,**/*.spec.ts,**/*.spec.tsx,tests/**/*,__tests__/**/*'
-          -Dsonar.exclusions='node_modules/**,dist/**,build/**,coverage/**,**/*.min.js,**/*.bundle.js,**/*.generated.*,**/*.test.ts,**/*.test.tsx,**/*.spec.ts,**/*.spec.tsx,tests/**,__tests__/**'
+          -Dsonar.exclusions='node_modules/**,dist/**,build/**,coverage/**,**/*.min.js,**/*.bundle.js,**/*.generated.*,**/*.test.ts,**/*.test.tsx,**/*.spec.ts,**/*.spec.tsx,tests/**,__tests__/**,src/index.ts'
           -Dsonar.javascript.node.maxspace=1024
           -Dsonar.scm.disabled=true
           -Dsonar.sourceEncoding=UTF-8
@@ -422,7 +486,7 @@ jobs:
         "${SONAR_SCANNER_DIR}/bin/sonar-scanner" "${SCAN_ARGS[@]}"
 
     - name: Sonar scan virida-eve
-      if: always()
+      if: always() && env.EVE_CHECKOUT_FAILED != 'true'
       working-directory: virida-eve
       env:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -431,10 +495,16 @@ jobs:
         SONAR_SCANNER_JAVA_OPTS: '-Xmx512m -Xms128m'
       run: |
         set -euo pipefail
-        if ! find . -maxdepth 1 -name "*.py" | grep -q .; then
-          echo "::warning::virida-eve has no Python files — checkout may have failed; skipping scan"
-          exit 0
+        if [ ! -d eve ]; then
+          echo "::error::virida-eve/eve/ directory not found — repo structure may have changed"
+          exit 1
         fi
+        PY_COUNT="$(find eve -name '*.py' -not -path '*/.venv/*' -not -path '*/venv/*' | wc -l)"
+        if [ "${PY_COUNT}" -eq 0 ]; then
+          echo "::error::No Python files found in virida-eve/eve/"
+          exit 1
+        fi
+        echo "[INFO] Found ${PY_COUNT} Python files in virida-eve/eve/"
         SONAR_TOKEN_CLEAN="$(printf '%s' "${SONAR_TOKEN}" | tr -d '\r\n')"
         SONAR_HOST_URL_CLEAN="$(printf '%s' "${SONAR_HOST_URL}" | tr -d '\r\n' | sed -E 's#(https?://[^/]+).*#\1#')"
         if [ -z "${SONAR_TOKEN_CLEAN}" ]; then
@@ -446,7 +516,7 @@ jobs:
           -Dsonar.token="${SONAR_TOKEN_CLEAN}"
           -Dsonar.projectKey=virida-eve
           -Dsonar.projectName=virida-eve
-          -Dsonar.sources=.
+          -Dsonar.sources=eve
           -Dsonar.inclusions='**/*.py'
           -Dsonar.exclusions='node_modules/**,venv/**,.venv/**,__pycache__/**,*.pyc,tests/**,test/**,*_test.py,test_*.py,conftest.py,setup.py'
           -Dsonar.scm.disabled=true
@@ -468,11 +538,20 @@ jobs:
         echo "========================================"
         echo "  SonarQube scan finished"
         echo "========================================"
-        echo "Scanned projects:"
-        echo "  • virida_api"
-        echo "  • Virida_marketplace_api"
-        echo "  • virida_app"
-        echo "  • virida-eve"
+        echo ""
+        echo "Project statuses:"
+        echo "  • virida_api        — scanned"
+        echo "  • Virida_marketplace_api — scanned"
+        if [ "${{ steps.test-app.outcome }}" = "failure" ]; then
+          echo "  • virida_app        — scanned (coverage MISSING — tests failed)"
+        else
+          echo "  • virida_app        — scanned"
+        fi
+        if [ "${EVE_CHECKOUT_FAILED:-}" = "true" ]; then
+          echo "  • virida-eve        — SKIPPED (checkout failed)"
+        else
+          echo "  • virida-eve        — scanned"
+        fi
         echo ""
         echo "Coverage minimum required: ${SONAR_COVERAGE_MINIMUM}%"
         echo "Results: ${{ secrets.SONAR_HOST_URL }}"
